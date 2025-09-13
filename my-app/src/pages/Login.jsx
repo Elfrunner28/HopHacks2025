@@ -19,7 +19,7 @@ const Login = () => {
     if (error) {
       console.log("Error logging in.");
     } else {
-      navigate("/map")
+      navigate("/home")
       setUserData(data);
       console.log(data);
     }
