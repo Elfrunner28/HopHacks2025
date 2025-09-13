@@ -34,7 +34,7 @@ const Signup = () => {
     if (error) {
       alert("Error signing up!");
     } else {
-      navigate("/map");
+      navigate("/home");
       setUserData(data);
       console.log(data);
     }
