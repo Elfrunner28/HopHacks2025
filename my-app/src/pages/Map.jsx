@@ -25,7 +25,7 @@ export default function MapAddCenter() {
       container: mapContainer.current,
       style: "mapbox://styles/bomka-27/cmfhzsoks008b01qw9nomcja3",
       center: [-90.049, 35.146],
-      zoom: 10,
+      zoom: 2,
     });
     mapRef.current.once("load", () => {
       centerToMyLocation();
