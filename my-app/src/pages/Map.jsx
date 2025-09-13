@@ -14,6 +14,7 @@ export default function MapAddCenter() {
 
   const [centers, setCenters] = useState([]);
   const [disasters, setDisasters] = useState([]);
+  const [eonetEvents, setEonetEvents] = useState([]); // <-- ADDED
   const [showCenter, setShowCenter] = useState(false);
   const [centerName, setCenterName] = useState("");
   const [centerResources, setCenterResources] = useState("");
@@ -61,9 +62,9 @@ export default function MapAddCenter() {
         .from("disasters")
         .select("*", { count: "exact" })
         .limit(10000);
-        // .select("id, name, disaster_type, affected_area, start_date") // pick only necessary columns
-        // .eq("disaster_type", "Flood") // filter for specific type
-        // .order("start_date", { ascending: false });
+      // .select("id, name, disaster_type, affected_area, start_date") // pick only necessary columns
+      // .eq("disaster_type", "Flood") // filter for specific type
+      // .order("start_date", { ascending: false });
 
       if (error) {
         console.error("Failed to fetch disasters:", error);
@@ -71,29 +72,73 @@ export default function MapAddCenter() {
       }
       console.log(data);
 
-      const pins = data.map(d => {
-        if (!d.affected_area) return null;
-        let lon = parseFloat(d.affected_area[0]);
-        let lat = parseFloat(d.affected_area[1]);
-        return {
-          id: d.id,
-          name: d.name,
-          resources: [], // if any resources or extra info
-          longitude: lon,
-          latitude: lat,
-        };
-      }).filter(Boolean);
+      const pins = data
+        .map((d) => {
+          if (!d.affected_area) return null;
+          let lon = parseFloat(d.affected_area[0]);
+          let lat = parseFloat(d.affected_area[1]);
+          return {
+            id: d.id,
+            name: d.name,
+            resources: [], // if any resources or extra info
+            longitude: lon,
+            latitude: lat,
+          };
+        })
+        .filter(Boolean);
 
       setCenters(pins);
-    };
-      
+    }
+
     fetchDisasters();
   }, []);
+
+  // <-- ADDED: Fetch EONET events from Supabase -->
+  useEffect(() => {
+    async function fetchEonetEvents() {
+      const { data, error } = await supabase
+        .from("eonet_events")
+        .select("eonet_id, title, geometry"); // Select only needed columns
+
+      if (error) {
+        console.error("Failed to fetch eonet_events:", error);
+        return;
+      }
+
+      const pins = data
+        .map((event) => {
+          // Ensure geometry data is valid
+          if (
+            !event.geometry ||
+            !Array.isArray(event.geometry) ||
+            event.geometry.length < 2
+          ) {
+            return null;
+          }
+          return {
+            id: event.eonet_id, // Use the unique ID from the table
+            name: event.title,
+            resources: [], // Set empty resources to match the popup format
+            longitude: parseFloat(event.geometry[0]),
+            latitude: parseFloat(event.geometry[1]),
+            type: "eonet", // IMPORTANT: Add a type identifier
+          };
+        })
+        .filter(Boolean); // Filter out any null entries
+
+      setEonetEvents(pins);
+    }
+
+    fetchEonetEvents();
+  }, []); // Empty dependency array so it only runs once on mount
+  // <-- END OF ADDED BLOCK -->
 
   // Render markers for centers + disasters
   useEffect(() => {
     if (!mapRef.current) return;
-    const allPins = [...disasters, ...centers];
+
+    // <-- MODIFIED: Combine all data sources -->
+    const allPins = [...disasters, ...centers, ...eonetEvents];
 
     // remove old markers
     for (const [id, marker] of markersRef.current.entries()) {
@@ -106,7 +151,10 @@ export default function MapAddCenter() {
     allPins.forEach((c) => {
       if (!markersRef.current.has(c.id)) {
         const el = document.createElement("div");
-        el.className = "pin";
+
+        // <-- MODIFIED: Conditionally assign class based on the type -->
+        el.className = c.type === "eonet" ? "pin eonet-pin" : "pin";
+
         el.title = c.name;
 
         el.addEventListener("click", () => {
@@ -119,9 +167,11 @@ export default function MapAddCenter() {
               <div class="popup-line"><strong>Resources</strong></div>
               <ul class="popup-list">
                 ${
-                  (c.resources?.length
-                    ? c.resources.map((r) => `<li>${escapeHtml(r)}</li>`).join("")
-                    : "<li>(none listed)</li>")
+                  c.resources?.length
+                    ? c.resources
+                        .map((r) => `<li>${escapeHtml(r)}</li>`)
+                        .join("")
+                    : "<li>(none listed)</li>"
                 }
               </ul>
             </div>
@@ -146,7 +196,7 @@ export default function MapAddCenter() {
         markersRef.current.get(c.id)?.setLngLat([c.longitude, c.latitude]);
       }
     });
-  }, [centers, disasters]);
+  }, [centers, disasters, eonetEvents]); // <-- MODIFIED: Added eonetEvents to dependency array
 
   const submitCenter = async (e) => {
     e.preventDefault();
@@ -172,7 +222,9 @@ export default function MapAddCenter() {
       setCenterName("");
       setCenterResources("");
 
-      mapRef.current?.flyTo({ center: [newCenter.longitude, newCenter.latitude] });
+      mapRef.current?.flyTo({
+        center: [newCenter.longitude, newCenter.latitude],
+      });
     });
   };
 
@@ -235,6 +287,16 @@ export default function MapAddCenter() {
 
         .pin { width: 14px; height: 14px; border-radius: 50%; background: rgb(0,68,255); box-shadow: 0 0 0 3px rgba(22,163,74,0.25); cursor:pointer; }
         .pin:hover { transform: scale(1.12); box-shadow: 0 0 0 4px rgba(22,163,74,0.35); }
+
+        /* --- ADDED FOR EONET PINS --- */
+        .eonet-pin {
+          background: #E53E3E; /* A bright red color */
+          box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.3); /* A matching red shadow */
+        }
+        .eonet-pin:hover {
+          box-shadow: 0 0 0 4px rgba(229, 62, 62, 0.4); /* Override the green hover shadow */
+        }
+        /* ---------------------------- */
       `}</style>
     </>
   );
