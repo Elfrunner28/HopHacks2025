@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -14,7 +14,7 @@ export default function MapAddCenter() {
 
   const [centers, setCenters] = useState([]);
   const [showCenter, setShowCenter] = useState(false);
-  const [CenterName, setCenterName] = useState("");
+  const [centerName, setCenterName] = useState("");
   const [centerResources, setCenterResources] = useState("");
 
   useEffect(() => {
@@ -26,19 +26,40 @@ export default function MapAddCenter() {
       center: [-90.049, 35.146],
       zoom: 10,
     });
+    mapRef.current.once("load", () => {
+      centerToMyLocation();
+    });
 
-    if (!navigator.geolocation) {
-      console.log("Geolocation is not supported by your browser");
-    } else {
-      console.log("nice");
+    function centerToMyLocation() {
+      if (!mapRef.current) {
+        console.warn("Map not ready yet");
+        return;
+      }
+
+      const fly = ([lng, lat]) => {
+        mapRef.current?.flyTo({
+          center: [lng, lat],
+          zoom: 14,
+          essential: true,
+        });
+      };
+
+      if (!("geolocation" in navigator)) {
+        console.warn("Geolocation not supported");
+        return;
+      }
+
+      console.log("hi");
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const latitute = pos.coords.latitude;
-          const longitude = pos.coords.longitude;
-          mapRef.current?.flyTo([longitude, latitute]);
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          console.log("Got location:", { lat, lng });
+
+          fly([lng, lat]);
         },
         (err) => {
-          console.warn("Geolocation error:", err);
+          console.warn("Geolocation error:", err.code, err.message);
         }
       );
     }
@@ -108,7 +129,130 @@ export default function MapAddCenter() {
     });
   }, [centers]);
 
-  const submitCenter = async (e) => {};
+  const submitCenter = async (e) => {
+    e.preventDefault();
 
-  return <div ref={mapContainer} style={{ width: "100%", height: "100vh" }} />;
+    if (!centerName) {
+      alert("name not provided");
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      console.log("Geolocation is not supported by your browser");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(({ coords }) => {
+      const resources = centerResources
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean); // removes empty resources
+
+      const newCenter = {
+        id: String(Date.now()),
+        name: centerName.trim(),
+        resources,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      };
+
+      setCenters((prev) => [...prev, newCenter]);
+      setShowCenter(false);
+      setCenterName("");
+      setCenterResources("");
+      //resets info - may be an issue if multiple people trying to access at same time
+
+      mapRef.current?.flyTo({
+        center: [newCenter.longitude, newCenter.latitude],
+      });
+    });
+  };
+
+  const escapeHtml = (text) => {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  };
+
+  return (
+    <>
+      <div className="toolbar">
+        <button className="btn" onClick={() => setShowCenter((s) => !s)}>
+          {showCenter ? "Close" : "Add Center"}
+        </button>
+      </div>
+      {showCenter && (
+        <div className="panel">
+          <div className="panel-title">Create Center</div>
+          <form onSubmit={submitCenter} className="form">
+            <label className="label">
+              Name
+              <input
+                className="input"
+                placeholder=""
+                value={centerName}
+                onChange={(e) => setCenterName(e.target.value)}
+              />
+            </label>
+
+            <label className="label">
+              Resources
+              <input
+                className="input"
+                placeholder=""
+                value={centerResources}
+                onChange={(e) => setCenterResources(e.target.value)}
+              />
+            </label>
+
+            <button type="submit" className="btn primary">
+              Create
+            </button>
+          </form>
+        </div>
+      )}
+      <div ref={mapContainer} style={{ width: "100%", height: "100vh" }} />
+
+      <style>
+        {`
+        .toolbar {
+          position: fixed; bottom: 12px; right: 5px; z-index: 10;
+          display: flex; gap: 8px;
+        }
+        .btn {
+          background:rgb(0, 85, 255); color:rgb(255, 255, 255); border: 1px solid rgba(255,255,255,0.12);
+          padding: 8px 12px; border-radius: 10px; cursor: pointer;
+        }
+        .btn.primary { background: #22c55e; color: #0b1220; border: none; }
+        .btn:hover { filter: brightness(1.05); }
+
+        .panel {
+          position: fixed; bottom: 56px; right: 12px; z-index: 10;
+          width: 300px; 
+          background: #0b1220; color: #e5e7eb;
+          border: 1px solid rgba(255,255,255,0.12);
+          border-radius: 12px; padding: 12px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+        }
+        .panel-title { font-weight: 700; margin-bottom: 8px; }
+        .form { display: grid; gap: 10px; }
+        .label { display: grid; gap: 6px; font-size: 12px; color: #cbd5e1; }
+        .input {
+          background: #0f172a; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.1);
+          padding: 8px 10px; border-radius: 8px; outline: none;
+        }
+          .pin {
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background:rgb(0, 68, 255);        
+          box-shadow: 0 0 0 3px rgba(22,163,74,0.25);
+          cursor: pointer;
+        }
+        .pin:hover { transform: scale(1.12); box-shadow: 0 0 0 4px rgba(22,163,74,0.35); }
+
+        `}
+      </style>
+    </>
+  );
 }
