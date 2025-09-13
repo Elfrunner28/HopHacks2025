@@ -19,7 +19,7 @@ const Login = () => {
     if (error) {
       console.log("Error logging in.");
     } else {
-      navigate("/Home")
+      navigate("/map")
       setUserData(data);
       console.log(data);
     }
@@ -27,7 +27,8 @@ const Login = () => {
 
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-r from-indigo-400 to-purple-400">
+   <div className="flex items-center justify-center min-h-screen bg-gradient-to-r from-teal-400 to-emerald-400">
+      <div className="bg-white p-10 rounded-2xl shadow-lg text-center space-y-6 w-full max-w-md mx-4">
 
         <h2 className="text-2xl font-bold text-gray-700 mb-6 text-center">
           Login
@@ -54,12 +55,13 @@ const Login = () => {
 
         <button
           type="submit"
-          className="w-full bg-indigo-500 text-white py-2 rounded-lg font-semibold hover:bg-indigo-600 transition"
+          className="w-full bg-indigo-500 text-black py-2 rounded-lg font-semibold hover:bg-indigo-600 transition"
           onClick={logIn}
         >
           Login
         </button>
     </div>
+     </div>
   );
 };
 
