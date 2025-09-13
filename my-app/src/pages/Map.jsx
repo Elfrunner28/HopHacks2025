@@ -108,19 +108,7 @@ export default function MapAddCenter() {
     });
   }, [centers]);
 
-  const submitCenter = async (e) => {
-    e.preventDefault();
-
-    if (!CenterName) {
-      alert("Please enter a center name");
-      return;
-    }
-
-    if (!("geolocation" in navigator)) {
-      alert("Geolocation not supported on this device.");
-      return;
-    }
-  };
+  const submitCenter = async (e) => {};
 
   return <div ref={mapContainer} style={{ width: "100%", height: "100vh" }} />;
 }
