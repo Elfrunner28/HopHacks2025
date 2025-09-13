@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { supabase } from "../supabaseClient";
 
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -88,21 +89,20 @@ export default function MapAddCenter() {
       if (!markersRef.current.has(c.id)) {
         const el = document.createElement("div");
         el.className = "pin";
-        el.title = c.name;
+        el.title = c.description;
 
         el.addEventListener("click", () => {
           popupRef.current?.remove();
           const content = document.createElement("div");
           content.className = "popup-shell";
           content.innerHTML = `
-            <div class="popup-header">${c.name}</div>
+            <div class="popup-header">${c.description}</div>
             <div class="popup-body">
               <div class="popup-line"><strong>Resources</strong></div>
               <ul class="popup-list">
                 ${
-                  c.resources
-                    .map((r) => `<li>${escapeHtml(r)}</li>`)
-                    .join("") || "<li>(none listed)</li>"
+                  c.category.map((r) => `<li>${escapeHtml(r)}</li>`).join("") ||
+                  "<li>(none listed)</li>"
                 }
               </ul>
             </div>
@@ -113,18 +113,20 @@ export default function MapAddCenter() {
             offset: 12,
             className: "clean-popup",
           })
-            .setLngLat([c.longitude, c.latitude])
+            .setLngLat([c.location[0], c.location[1]])
             .setDOMContent(content)
             .addTo(mapRef.current);
         });
 
         const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
-          .setLngLat([c.longitude, c.latitude])
+          .setLngLat([c.location[0], c.location[1]])
           .addTo(mapRef.current);
 
-        markersRef.current.set(c.id, marker);
+        markersRef.current.set(c.description, marker);
       } else {
-        markersRef.current.get(c.id)?.setLngLat([c.longitude, c.latitude]);
+        markersRef.current
+          .get(c.description)
+          ?.setLngLat([c.location[0], c.location[1]]);
       }
     });
   }, [centers]);
@@ -142,28 +144,44 @@ export default function MapAddCenter() {
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(({ coords }) => {
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
       const resources = centerResources
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean); // removes empty resources
 
-      const newCenter = {
-        id: String(Date.now()),
-        name: centerName.trim(),
-        resources,
-        latitude: coords.latitude,
-        longitude: coords.longitude,
+      const payload = {
+        description: centerName.trim(),
+        category: resources,
+        location: [coords.longitude, coords.latitude],
       };
 
-      setCenters((prev) => [...prev, newCenter]);
+      const { data, error } = await supabase
+        .from("reports")
+        .insert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Supabase insert error:", error);
+        alert("Could not save to database.");
+        return;
+      }
+
+      const saved = {
+        description: data.description,
+        category: data.category,
+        location: data.location,
+      };
+
+      setCenters((prev) => [...prev, saved]);
       setShowCenter(false);
       setCenterName("");
       setCenterResources("");
       //resets info - may be an issue if multiple people trying to access at same time
 
       mapRef.current?.flyTo({
-        center: [newCenter.longitude, newCenter.latitude],
+        center: [saved.location[0], saved.location[1]],
       });
     });
   };
