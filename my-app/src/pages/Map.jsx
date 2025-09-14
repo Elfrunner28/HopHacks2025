@@ -3,7 +3,12 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import Slider from "rc-slider";
 import "rc-slider/assets/index.css";
-import { fetchAllDisasters, fetchEonetEvents } from "../supabaseData";
+import {
+  fetchAllDisasters,
+  fetchEonetEvents,
+  fetchCenters,
+} from "../supabaseData";
+import { supabase } from "../supabaseClient";
 
 mapboxgl.accessToken =
   "pk.eyJ1IjoiYm9ta2EtMjciLCJhIjoiY21maHd3a3htMDE1ZjJrcHU3cXNrYjF3YSJ9.vGnAnTPwaGpTDso10ytKgg";
@@ -41,31 +46,76 @@ export default function MapAddCenter() {
         return "badge";
     }
   }
+  function getPinGroup(c) {
+    if (c.disaster_type) {
+      // for disasters
+      return getDisasterGroup(c.disaster_type);
+    } else if (c.resources) {
+      // user-created centers
+      return "Center";
+    }
+    return "Others";
+  }
+  function getPinColor(group) {
+    switch (group) {
+      case "Fire": return "#FF4500";          // orange-red
+      case "Flood": return "#1E90FF";         // dodger blue
+      case "Earthquake": return "#8B0000";    // dark red
+      case "Severe Storms": return "#FFD700"; // gold
+      case "Tropical Cyclones": return "#00CED1"; // dark turquoise
+      case "Tornadoes": return "#800080";     // purple
+      case "Center": return "#22c55e";        // green
+      default: return "#808080";              // gray for Others
+    }
+  }
+  function getDisasterGroup(type) {
+    const t = type.toLowerCase();
 
-  // Major disaster types
-  const majorDisasters = [
+    if (t.includes('fire')) return "Fire";
+    if (t.includes('flood')) return "Flood";
+    if (t.includes('earthquake')) return "Earthquake";
+    if (t.includes('tornado')) return "Tornado";
+
+    // Severe Storms group
+    const severeStorms = [
+      "Straight-Line Winds",
+      "Winter Storm",
+      "Snowstorm",
+      "Coastal Storm",
+      "Severe Ice Storm"
+    ];
+    if (severeStorms.includes(type)) return "Severe Storms";
+
+    // Tropical Cyclones group
+    const tropicalCyclones = [
+      "Hurricane",
+      "Typhoon",
+      "Tropical Storm",
+      "Tropical Depression"
+    ];
+    if (tropicalCyclones.includes(type)) return "Tropical Cyclones";
+
+    // Everything else goes into Others
+    return "Others";
+  }
+
+  const uniqueTypes = [
     "Fire",
-    "Severe Storm",
     "Flood",
-    "Hurricane",
-    "Tornado",
     "Earthquake",
-    "Winter Storm",
-    "Tropical Storm",
+    "Severe Storms",
+    "Tropical Cyclones",
+    "Tornadoes",
+    "Others"
   ];
-
-  const allDisasterTypes = [
-    "Fire", "Severe Storm", "Straight-Line Winds", "Flood", "Hurricane",
-    "Biological", "Winter Storm", "Tornado", "Tropical Storm", "Earthquake",
-    "Typhoon", "Snowstorm", "Freezing", "Mud/Landslide", "Coastal Storm",
-    "Severe Ice Storm", "Dam/Levee Break", "Volcanic Eruption",
-    "Tropical Depression", "Toxic Substances", "Chemical", "Terrorist",
-    "Drought", "Human Cause", "Fishing Losses", "Tsunami", "Other"
-  ];
-
-  const uniqueTypes = Array.from(
-    new Set(allDisasterTypes.map((type) => (majorDisasters.includes(type) ? type : "Other")))
-  );
+  // Load centers from Supabase
+  useEffect(() => {
+    async function loadCenters() {
+      const data = await fetchCenters();
+      setCenters(data);
+    }
+    loadCenters();
+  }, []);
 
   // Initialize map
   useEffect(() => {
@@ -155,10 +205,9 @@ export default function MapAddCenter() {
       allPins = [...eonetEvents, ...centers];
     } else if (activeDataset === "history") {
       allPins = disasters.filter((d) => {
-        const type = majorDisasters.includes(d.disaster_type) ? d.disaster_type : "Other";
-
+        const typeGroup = getDisasterGroup(d.disaster_type);
         const matchType =
-          filter.disasterTypes.length > 0 ? filter.disasterTypes.includes(type) : false;
+          filter.disasterTypes.length > 0 ? filter.disasterTypes.includes(typeGroup) : false;
         const matchYear =
           !filter.year || new Date(d.start_date).getFullYear() === filter.year;
 
@@ -177,42 +226,47 @@ export default function MapAddCenter() {
     allPins.forEach((c) => {
       if (!markersRef.current.has(c.id)) {
         const el = document.createElement("div");
-        el.className = c.type === "eonet" ? "pin eonet-pin" : "pin";
+        el.className = "pin";
         el.title = c.name;
-
-        el.addEventListener("click", () => {
-          popupRef.current?.remove();
-          const content = document.createElement("div");
-          content.className = "popup-shell";
-          content.innerHTML = `
-            <div class="popup-header">${c.name}</div>
-            <div class="popup-body">
-              <div class="popup-line"><strong>Resources</strong></div>
-              <ul class="popup-list">
-                ${
-                  c.resources?.length
-                    ? c.resources.map((r) => `<li>${escapeHtml(r)}</li>`).join("")
-                    : "<li>(none listed)</li>"
-                }
-              </ul>
-            </div>
-          `;
-          popupRef.current = new mapboxgl.Popup({
-            closeButton: true,
-            closeOnClick: true,
-            offset: 12,
-            className: "clean-popup",
-          })
-            .setLngLat([c.longitude, c.latitude])
-            .setDOMContent(content)
-            .addTo(mapRef.current);
-        });
 
         const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
           .setLngLat([c.longitude, c.latitude])
           .addTo(mapRef.current);
 
+        // 3) build popup HTML NOW (not in click), using your dict
+        let resourcesListHtml = "<li>(none listed)</li>";
+        if (c.resources && typeof c.resources === "object") {
+          const items = Object.entries(c.resources).map(
+            ([name, status]) => `<li>${status} - ${name}</li>`
+          );
+          if (items.length) resourcesListHtml = items.join("");
+        }
+
+        const content = document.createElement("div");
+        content.className = "popup-shell";
+        content.innerHTML = `
+      <div class="popup-header">${c.name ?? ""}</div>
+      <div class="popup-body">
+        <div class="popup-line"><strong>Resources</strong></div>
+        <ul class="popup-list">${resourcesListHtml}</ul>
+      </div>
+    `;
+
+        // 4) make a popup for THIS marker
+        const popup = new mapboxgl.Popup({
+          closeButton: true,
+          closeOnClick: true,
+          offset: 12,
+          className: "clean-popup",
+        }).setDOMContent(content);
+
+        // 5) attach it; clicking the marker will open it
+        marker.setPopup(popup);
+
         markersRef.current.set(c.id, marker);
+        const group = getPinGroup(c);
+        el.style.backgroundColor = getPinColor(group);
+        el.style.border = "1px solid black";
       } else {
         markersRef.current.get(c.id)?.setLngLat([c.longitude, c.latitude]);
       }
@@ -221,58 +275,102 @@ export default function MapAddCenter() {
 
   const submitCenter = async (e) => {
     e.preventDefault();
-    if (!centerName) return alert("name not provided");
-    if (!navigator.geolocation) return;
+    if (!centerName) return alert("Name not provided");
+    if (!navigator.geolocation) return alert("Geolocation not supported");
 
-    navigator.geolocation.getCurrentPosition(({ coords }) => {
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+      // Convert resourceRows to a JSON object
       const resources = resourceRows
-        .map((r) => ({ name: r.name.trim(), status: r.status }))
-        .filter((r) => r.name.length > 0); // drop empty rows
+        .filter((r) => r.name.trim().length > 0)
+        .reduce((acc, r) => {
+          acc[r.name.trim()] = r.status;
+          return acc;
+        }, {});
 
-      const newCenter = {
-        id: String(Date.now()),
-        name: centerName.trim(),
-        resources,
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-      };
+      try {
+        // Insert into Supabase
+        const { data, error } = await supabase
+          .from("centers")
+          .insert([
+            {
+              name: centerName.trim(),
+              location: [coords.longitude, coords.latitude],
+              resources,
+            },
+          ])
+          .select()
+          .single();
 
-      setCenters((prev) => [...prev, newCenter]);
-      setShowCenter(false);
-      setCenterName("");
-      setResourceRows([{ name: "", status: "available" }]); // reset editor
+        if (error) {
+          console.error("Failed to insert center:", error);
+          return alert("Failed to save center to database");
+        }
 
-      mapRef.current?.flyTo({
-        center: [newCenter.longitude, newCenter.latitude],
-        zoom: 14,
-        essential: true,
-      });
+        const newCenter = {
+          id: data.id,
+          name: data.name || centerName.trim(),
+          resources: data.resources || resources,
+          longitude: data.location[0],
+          latitude: data.location[1],
+        };
+        console.log(newCenter);
+
+        // Update local state with inserted center
+        setCenters((prev) => [...prev, newCenter]);
+
+        // Reset form
+        setShowCenter(false);
+        setCenterName("");
+        setResourceRows([{ name: "", status: "available" }]);
+
+        // Fly map to new center
+        mapRef.current?.flyTo({
+          center: [data.location[0], data.location[1]],
+          zoom: 14,
+          essential: true,
+        });
+      } catch (err) {
+        console.error("Unexpected error inserting center:", err);
+      }
     });
-
-    const escapeHtml = (text) => {
-      const div = document.createElement("div");
-      div.textContent = text;
-      return div.innerHTML;
-    };
   };
+  useEffect(() => {
+    if (activeDataset === "history") {
+      setShowCenter(false);
+    }
+  }, [activeDataset]);
   return (
     <>
       <div className="toolbar">
         <button
           className="btn"
           onClick={() => setActiveDataset("live")}
-          style={{ background: activeDataset === "live" ? "#22c55e" : undefined }}
+          style={{
+            background: activeDataset === "live" ? "#22c55e" : undefined,
+          }}
         >
           Live
         </button>
         <button
           className="btn"
           onClick={() => setActiveDataset("history")}
-          style={{ background: activeDataset === "history" ? "#22c55e" : undefined }}
+          style={{
+            background: activeDataset === "history" ? "#22c55e" : undefined,
+          }}
         >
           History
         </button>
-        <button className="btn" onClick={() => setShowCenter((s) => !s)}>
+        <button
+          className="btn"
+          onClick={() => {
+            if (activeDataset === "history") return; // prevent click
+            setShowCenter((s) => !s);
+          }}
+          style={{
+            background: activeDataset === "live" ? "#0055ff" : "#555", // green for live, gray for history
+            cursor: activeDataset === "live" ? "pointer" : "not-allowed",
+          }}
+        >
           {showCenter ? "Close" : "Add Center"}
         </button>
       </div>
@@ -281,56 +379,61 @@ export default function MapAddCenter() {
         <div className="panel">
           <div className="panel-title">Filter Disasters</div>
           <div className="checkbox-group">
-          <button
-            type="button"
-            className="btn small"
-            onClick={() => {
-              if (filter.disasterTypes.length === uniqueTypes.length) {
-                // Deselect all
-                setFilter({ ...filter, disasterTypes: [] });
-              } else {
-                // Select all
-                setFilter({ ...filter, disasterTypes: [...uniqueTypes] });
-              }
-            }}
-          >
-            All
-          </button>
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => {
+                if (filter.disasterTypes.length === uniqueTypes.length) {
+                  // Deselect all
+                  setFilter({ ...filter, disasterTypes: [] });
+                } else {
+                  // Select all
+                  setFilter({ ...filter, disasterTypes: [...uniqueTypes] });
+                }
+              }}
+            >
+              All
+            </button>
 
-          {uniqueTypes.map((type) => (
-            <label key={type} className="label">
-              <input
-                type="checkbox"
-                checked={filter.disasterTypes.includes(type)}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  setFilter((prev) => {
-                    const types = new Set(prev.disasterTypes);
-                    if (checked) types.add(type);
-                    else types.delete(type);
-                    return { ...prev, disasterTypes: Array.from(types) };
-                  });
-                }}
-              />
-              {type}
-            </label>
-          ))}
-        </div>
-
+            {uniqueTypes.map((type) => (
+              <label key={type} className="label">
+                <input
+                  type="checkbox"
+                  checked={filter.disasterTypes.includes(type)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setFilter((prev) => {
+                      const types = new Set(prev.disasterTypes);
+                      if (checked) types.add(type);
+                      else types.delete(type);
+                      return { ...prev, disasterTypes: Array.from(types) };
+                    });
+                  }}
+                />
+                {type}
+              </label>
+            ))}
+          </div>
 
           <div className="year-slider">
-            <label className="label">Year</label>
+            <label className="label">Year: {filter.year}</label>
             <div className="slider-wrapper">
               <Slider
                 min={2015}
                 max={2025}
                 step={1}
-                value={filter.year}                         
-                onChange={(v) => setFilter(prev => ({ ...prev, year: v }))}
-                marks={{ 2015: "2015", 2025: "2025" }}  // only min/max labels
-                railStyle={{ backgroundColor: "#1e293b", height: 6 }}  // slider background
+                value={filter.year}
+                onChange={(v) => setFilter((prev) => ({ ...prev, year: v }))}
+                marks={{ 2015: "2015", 2025: "2025" }} // only min/max labels
+                railStyle={{ backgroundColor: "#1e293b", height: 6 }} // slider background
                 trackStyle={{ backgroundColor: "#1e293b", height: 6 }} // same as rail so no green track
-                handleStyle={{ borderColor: "#22c55e", backgroundColor: "#22c55e", width: 16, height: 16, marginTop: -5 }}
+                handleStyle={{
+                  borderColor: "#22c55e",
+                  backgroundColor: "#22c55e",
+                  width: 16,
+                  height: 16,
+                  marginTop: -5,
+                }}
               />
             </div>
           </div>
@@ -355,43 +458,38 @@ export default function MapAddCenter() {
               {resourceRows.map((row, i) => (
                 <div className="res-row" key={i}>
                   <input
-                    className="input res-name"
-                    placeholder=""
+                    className="res-name"
+                    placeholder="Resource name"
                     value={row.name}
                     onChange={(e) => updateResourceName(i, e.target.value)}
                   />
                   <select
-                    className="input res-status"
+                    className="res-status"
                     value={row.status}
                     onChange={(e) => updateResourceStatus(i, e.target.value)}
                   >
                     {RESOURCE_STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
+                      <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
-                  <button
-                    type="button"
-                    className="btn small"
-                    onClick={() => removeResourceRow(i)}
-                    disabled={resourceRows.length === 1}
-                    title={
-                      resourceRows.length === 1
-                        ? "Keep at least one row"
-                        : "Remove"
-                    }
-                  >
-                    ✕
-                  </button>
                 </div>
               ))}
+
               <button
                 type="button"
-                className="btn small"
+                className="btn small add-resource"
                 onClick={addResourceRow}
               >
                 + Add resource
+              </button>
+
+              <button
+                type="button"
+                className="btn small delete-resource"
+                onClick={() => removeResourceRow(resourceRows.length - 1)}
+                disabled={resourceRows.length === 1}
+              >
+                - Delete last resource
               </button>
             </div>
 
@@ -405,96 +503,132 @@ export default function MapAddCenter() {
       <div ref={mapContainer} style={{ width: "100%", height: "100vh" }} />
 
       <style>{`
-      .toolbar { position: fixed; bottom: 12px; right: 5px; z-index: 10; display: flex; gap: 8px; }
+      .toolbar { position: fixed; bottom: 20px; right: 12px; z-index: 10; display: flex; gap: 8px; }
       .btn { background:rgb(0, 85, 255); color:white; padding: 8px 12px; border-radius: 10px; cursor: pointer; border:none; }
       .btn.primary { background: #22c55e; color: #0b1220; }
       .btn:hover { filter: brightness(1.05); }
 
       .panel {
-  position: fixed;
-  bottom: 56px;
-  right: 12px;
-  z-index: 10;
-  max-width: 100%;
-  box-sizing: border-box;
-  width: 300px;
-  background: #0b1220;
-  color: #e5e7eb;
-  border-radius: 12px;
-  padding: 12px;
-}
+        position: fixed;
+        bottom: 70px;
+        right: 12px;
+        z-index: 10;
+        max-width: 100%;
+        box-sizing: border-box;
+        width: 250px;
+        background: #0b1220;
+        color: #e5e7eb;
+        border-radius: 12px;
+        padding: 12px;
+      }
       
       .panel-title { font-weight: 700; margin-bottom: 8px; }
       .form { display: grid; gap: 10px; }
       .label { display: grid; gap: 6px; font-size: 12px; color: #cbd5e1; }
-      .input { background: #0f172a; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.1); padding: 8px 10px; border-radius: 8px; }
+      .input {
+        background: #0f172a;
+        color: #e5e7eb;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 8px 10px;
+        border-radius: 8px;
+        font-size: 14px;
+        width: 100%; /* full width */
+        box-sizing: border-box;
+      }
 
-      .pin { width: 14px; height: 14px; border-radius: 50%; background: rgb(0,68,255); box-shadow: 0 0 0 3px rgba(22,163,74,0.25); cursor:pointer; }
-      .pin:hover { transform: scale(1.12); box-shadow: 0 0 0 4px rgba(22,163,74,0.35); }
+      .pin { width: 10px; height: 10px; border-radius: 50%; cursor:pointer;}
+      .pin:hover { transform: scale(1.12); box-shadow: 0 0 0 3px rgba(22,163,74,0.35); }
 
-        .eonet-pin { background: #E53E3E; box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.3); }
-        .eonet-pin:hover { box-shadow: 0 0 0 4px rgba(229, 62, 62, 0.4); }
-        .checkbox-group {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
+      .checkbox-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
 
-        .checkbox-group .label {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 12px;
-          color: #cbd5e1;
-        }
+      .checkbox-group .label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #cbd5e1;
+      }
 
-        .btn.small {
-          align-self: flex-start;
-          background: #0b1220;
-          color: #e5e7eb;
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          padding: 2px 6px;
-          border-radius: 6px;
-          cursor: pointer;
-          font-size: 10px;
-          margin-bottom: 6px;
-        }
-        .btn.small:hover {
-          background: #1e293b;
-        }
-        .year-slider {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          margin-bottom: 8px;
-          width: 100%; /* full panel width */
-          align-items: center; /* center the wrapper */
-        }
+      .btn.small {
+        align-self: flex-start;
+        background: #0b1220;
+        color: #e5e7eb;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 2px 6px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 10px;
+        margin-bottom: 6px;
+      }
+      .btn.small:hover {
+        background: #1e293b;
+      }
+      .year-slider {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 8px;
+        width: 100%; /* full panel width */
+        align-items: center; /* center the wrapper */
+      }
 
-        .slider-wrapper {
-          width: 90%; /* fixed slider width */
-        }
-        .slider-labels {
-          display: flex;
-          justify-content: space-between;
-          font-size: 12px;
-          color: #cbd5e1;
-        }
-        .year-range-slider {
-          margin-top: 6px;
-        }
-        .rc-slider-mark-text{
-          color: #999;
-          margin-top: -3px;
-        } 
-        .res-row {
-          margin-bottom: 15px
-        }
+      .slider-wrapper {
+        width: 90%; /* fixed slider width */
+      }
+      .slider-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #cbd5e1;
+      }
+      .year-range-slider {
+        margin-top: 6px;
+      }
+      .rc-slider-mark-text{
+        color: #999;
+        margin-top: -3px;
+      } 
+      .res-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
 
-        .res-status {
-          margin: 10px
-          
-        }`
+      .res-row {
+        display: flex;
+        gap: 4px;
+        flex-direction: column;
+      }
+
+      .res-name,
+      .res-status {
+        width: 100%;
+        box-sizing: border-box;
+        background: #0f172a;
+        color: #e5e7eb;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 14px;
+        height: 36px; /* same height for name and status */
+      }
+      
+      .res-status {
+        padding: 4px 10px; /* small padding for select dropdown */
+        margin-bottom: 8px;
+      }
+
+      .btn.small.add-resource,
+      .btn.small.delete-resource {
+        width: 100%;
+        text-align: center;
+        margin-top: 2px; /* less gap above buttons */
+        margin-bottom: 2px; /* less gap below buttons */
+      }`
       }</style>
     </>
   );
