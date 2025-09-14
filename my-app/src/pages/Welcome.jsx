@@ -27,9 +27,7 @@ const Welcome = () => {
         </div>
       </div>
     </div>
-
-
-)
+  );
 };
 
-export default Welcome
+export default Welcome;
