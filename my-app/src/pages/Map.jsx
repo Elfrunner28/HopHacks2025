@@ -23,7 +23,24 @@ export default function MapAddCenter() {
 
   const [showCenter, setShowCenter] = useState(false);
   const [centerName, setCenterName] = useState("");
-  const [centerResources, setCenterResources] = useState("");
+  const [resourceRows, setResourceRows] = useState([
+    { name: "", status: "available" },
+  ]);
+
+  const RESOURCE_STATUSES = ["available", "low", "out"];
+
+  function statusClass(s) {
+    switch (s) {
+      case "available":
+        return "badge badge-ok";
+      case "low":
+        return "badge badge-warn";
+      case "out":
+        return "badge badge-out";
+      default:
+        return "badge";
+    }
+  }
 
   // Major disaster types
   const majorDisasters = [
@@ -81,6 +98,27 @@ export default function MapAddCenter() {
       mapRef.current = null;
     };
   }, []);
+
+  function addResourceRow() {
+    setResourceRows((rows) => [...rows, { name: "", status: "available" }]);
+  }
+  function removeResourceRow(index) {
+    setResourceRows((rows) => rows.filter((_, i) => i !== index));
+  }
+  function updateResourceName(index, val) {
+    setResourceRows((rows) => {
+      const copy = rows.slice();
+      copy[index] = { ...copy[index], name: val };
+      return copy;
+    });
+  }
+  function updateResourceStatus(index, val) {
+    setResourceRows((rows) => {
+      const copy = rows.slice();
+      copy[index] = { ...copy[index], status: val };
+      return copy;
+    });
+  }
 
   // Fetch disasters
   useEffect(() => {
@@ -187,7 +225,9 @@ export default function MapAddCenter() {
     if (!navigator.geolocation) return;
 
     navigator.geolocation.getCurrentPosition(({ coords }) => {
-      const resources = centerResources.split(",").map((s) => s.trim()).filter(Boolean);
+      const resources = resourceRows
+        .map((r) => ({ name: r.name.trim(), status: r.status }))
+        .filter((r) => r.name.length > 0); // drop empty rows
 
       const newCenter = {
         id: String(Date.now()),
@@ -200,18 +240,21 @@ export default function MapAddCenter() {
       setCenters((prev) => [...prev, newCenter]);
       setShowCenter(false);
       setCenterName("");
-      setCenterResources("");
+      setResourceRows([{ name: "", status: "available" }]); // reset editor
 
-      mapRef.current?.flyTo({ center: [newCenter.longitude, newCenter.latitude] });
+      mapRef.current?.flyTo({
+        center: [newCenter.longitude, newCenter.latitude],
+        zoom: 14,
+        essential: true,
+      });
     });
-  };
 
-  const escapeHtml = (text) => {
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
+    const escapeHtml = (text) => {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    };
   };
-
   return (
     <>
       <div className="toolbar">
@@ -306,14 +349,52 @@ export default function MapAddCenter() {
                 onChange={(e) => setCenterName(e.target.value)}
               />
             </label>
-            <label className="label">
-              Resources
-              <input
-                className="input"
-                value={centerResources}
-                onChange={(e) => setCenterResources(e.target.value)}
-              />
-            </label>
+
+            <label className="label">Resources</label>
+            <div className="res-rows">
+              {resourceRows.map((row, i) => (
+                <div className="res-row" key={i}>
+                  <input
+                    className="input res-name"
+                    placeholder=""
+                    value={row.name}
+                    onChange={(e) => updateResourceName(i, e.target.value)}
+                  />
+                  <select
+                    className="input res-status"
+                    value={row.status}
+                    onChange={(e) => updateResourceStatus(i, e.target.value)}
+                  >
+                    {RESOURCE_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => removeResourceRow(i)}
+                    disabled={resourceRows.length === 1}
+                    title={
+                      resourceRows.length === 1
+                        ? "Keep at least one row"
+                        : "Remove"
+                    }
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="btn small"
+                onClick={addResourceRow}
+              >
+                + Add resource
+              </button>
+            </div>
+
             <button type="submit" className="btn primary">
               Create
             </button>
@@ -324,19 +405,32 @@ export default function MapAddCenter() {
       <div ref={mapContainer} style={{ width: "100%", height: "100vh" }} />
 
       <style>{`
-        .toolbar { position: fixed; bottom: 12px; right: 5px; z-index: 10; display: flex; gap: 8px; }
-        .btn { background:rgb(0, 85, 255); color:white; padding: 8px 12px; border-radius: 10px; cursor: pointer; border:none; }
-        .btn.primary { background: #22c55e; color: #0b1220; }
-        .btn:hover { filter: brightness(1.05); }
+      .toolbar { position: fixed; bottom: 12px; right: 5px; z-index: 10; display: flex; gap: 8px; }
+      .btn { background:rgb(0, 85, 255); color:white; padding: 8px 12px; border-radius: 10px; cursor: pointer; border:none; }
+      .btn.primary { background: #22c55e; color: #0b1220; }
+      .btn:hover { filter: brightness(1.05); }
 
-        .panel { position: fixed; bottom: 56px; right: 12px; z-index: 10; width: 300px; background: #0b1220; color: #e5e7eb; border-radius: 12px; padding: 12px; }
-        .panel-title { font-weight: 700; margin-bottom: 8px; }
-        .form { display: grid; gap: 10px; }
-        .label { display: grid; gap: 6px; font-size: 12px; color: #cbd5e1; }
-        .input { background: #0f172a; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.1); padding: 8px 10px; border-radius: 8px; }
+      .panel {
+  position: fixed;
+  bottom: 56px;
+  right: 12px;
+  z-index: 10;
+  max-width: 100%;
+  box-sizing: border-box;
+  width: 300px;
+  background: #0b1220;
+  color: #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+}
+      
+      .panel-title { font-weight: 700; margin-bottom: 8px; }
+      .form { display: grid; gap: 10px; }
+      .label { display: grid; gap: 6px; font-size: 12px; color: #cbd5e1; }
+      .input { background: #0f172a; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.1); padding: 8px 10px; border-radius: 8px; }
 
-        .pin { width: 14px; height: 14px; border-radius: 50%; background: rgb(0,68,255); box-shadow: 0 0 0 3px rgba(22,163,74,0.25); cursor:pointer; }
-        .pin:hover { transform: scale(1.12); box-shadow: 0 0 0 4px rgba(22,163,74,0.35); }
+      .pin { width: 14px; height: 14px; border-radius: 50%; background: rgb(0,68,255); box-shadow: 0 0 0 3px rgba(22,163,74,0.25); cursor:pointer; }
+      .pin:hover { transform: scale(1.12); box-shadow: 0 0 0 4px rgba(22,163,74,0.35); }
 
         .eonet-pin { background: #E53E3E; box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.3); }
         .eonet-pin:hover { box-shadow: 0 0 0 4px rgba(229, 62, 62, 0.4); }
@@ -392,7 +486,15 @@ export default function MapAddCenter() {
         .rc-slider-mark-text{
           color: #999;
           margin-top: -3px;
-        } `
+        } 
+        .res-row {
+          margin-bottom: 15px
+        }
+
+        .res-status {
+          margin: 10px
+          
+        }`
       }</style>
     </>
   );
