@@ -13,10 +13,24 @@ const Login = () => {
       email: email,
       password: password,
     });
-
     if (error) {
       console.log("Error logging in.");
     } else {
+      console.log({ data });
+      const response = await fetch("http://localhost:5000/check-state", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          state: data?.user?.user_metadata?.state,
+          userEmail: email,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Network response was not ok");
+      }
       navigate("/home");
       setUserData(data);
       console.log(data);
