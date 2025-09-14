@@ -23,7 +23,7 @@ const Login = () => {
     } else {
       console.log({ data });
       // This fetch call can be removed if you handle the logic on the /home page
-      const response = await fetch("http://localhost:5000/check-state", {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/check-state`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
