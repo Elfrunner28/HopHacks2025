@@ -31,21 +31,10 @@ export default function MapAddCenter() {
   const [resourceRows, setResourceRows] = useState([
     { name: "", status: "available" },
   ]);
+  const [needs, setNeeds] = useState([""]);
 
   const RESOURCE_STATUSES = ["available", "low", "out"];
 
-  function statusClass(s) {
-    switch (s) {
-      case "available":
-        return "badge badge-ok";
-      case "low":
-        return "badge badge-warn";
-      case "out":
-        return "badge badge-out";
-      default:
-        return "badge";
-    }
-  }
   function getPinGroup(c) {
     if (c.disaster_type) {
       // for disasters
@@ -58,23 +47,31 @@ export default function MapAddCenter() {
   }
   function getPinColor(group) {
     switch (group) {
-      case "Fire": return "#FF4500";          // orange-red
-      case "Flood": return "#1E90FF";         // dodger blue
-      case "Earthquake": return "#8B0000";    // dark red
-      case "Severe Storms": return "#FFD700"; // gold
-      case "Tropical Cyclones": return "#00CED1"; // dark turquoise
-      case "Tornadoes": return "#800080";     // purple
-      case "Center": return "#22c55e";        // green
-      default: return "#808080";              // gray for Others
+      case "Fire":
+        return "#FF4500"; // orange-red
+      case "Flood":
+        return "#1E90FF"; // dodger blue
+      case "Earthquake":
+        return "#8B0000"; // dark red
+      case "Severe Storms":
+        return "#FFD700"; // gold
+      case "Tropical Cyclones":
+        return "#00CED1"; // dark turquoise
+      case "Tornadoes":
+        return "#800080"; // purple
+      case "Center":
+        return "#22c55e"; // green
+      default:
+        return "#808080"; // gray for Others
     }
   }
   function getDisasterGroup(type) {
     const t = type.toLowerCase();
 
-    if (t.includes('fire')) return "Fire";
-    if (t.includes('flood')) return "Flood";
-    if (t.includes('earthquake')) return "Earthquake";
-    if (t.includes('tornado')) return "Tornado";
+    if (t.includes("fire")) return "Fire";
+    if (t.includes("flood")) return "Flood";
+    if (t.includes("earthquake")) return "Earthquake";
+    if (t.includes("tornado")) return "Tornado";
 
     // Severe Storms group
     const severeStorms = [
@@ -82,7 +79,7 @@ export default function MapAddCenter() {
       "Winter Storm",
       "Snowstorm",
       "Coastal Storm",
-      "Severe Ice Storm"
+      "Severe Ice Storm",
     ];
     if (severeStorms.includes(type)) return "Severe Storms";
 
@@ -91,7 +88,7 @@ export default function MapAddCenter() {
       "Hurricane",
       "Typhoon",
       "Tropical Storm",
-      "Tropical Depression"
+      "Tropical Depression",
     ];
     if (tropicalCyclones.includes(type)) return "Tropical Cyclones";
 
@@ -106,7 +103,7 @@ export default function MapAddCenter() {
     "Severe Storms",
     "Tropical Cyclones",
     "Tornadoes",
-    "Others"
+    "Others",
   ];
   // Load centers from Supabase
   useEffect(() => {
@@ -152,6 +149,19 @@ export default function MapAddCenter() {
   function addResourceRow() {
     setResourceRows((rows) => [...rows, { name: "", status: "available" }]);
   }
+  function addNeedRow() {
+    setNeeds((rows) => [...rows, ""]);
+  }
+
+  const updateNeedName = (index, val) =>
+    setNeeds((rows) => {
+      const copy = rows.slice();
+      copy[index] = val;
+      return copy;
+    });
+  const removeNeedRow = (index) =>
+    setNeeds((rows) => rows.filter((_, i) => i !== index));
+
   function removeResourceRow(index) {
     setResourceRows((rows) => rows.filter((_, i) => i !== index));
   }
@@ -207,7 +217,9 @@ export default function MapAddCenter() {
       allPins = disasters.filter((d) => {
         const typeGroup = getDisasterGroup(d.disaster_type);
         const matchType =
-          filter.disasterTypes.length > 0 ? filter.disasterTypes.includes(typeGroup) : false;
+          filter.disasterTypes.length > 0
+            ? filter.disasterTypes.includes(typeGroup)
+            : false;
         const matchYear =
           !filter.year || new Date(d.start_date).getFullYear() === filter.year;
 
@@ -233,8 +245,7 @@ export default function MapAddCenter() {
           .setLngLat([c.longitude, c.latitude])
           .addTo(mapRef.current);
 
-        // 3) build popup HTML NOW (not in click), using your dict
-        let resourcesListHtml = "<li>(none listed)</li>";
+        let resourcesListHtml = null;
         if (c.resources && typeof c.resources === "object") {
           const items = Object.entries(c.resources).map(
             ([name, status]) => `<li>${status} - ${name}</li>`
@@ -244,23 +255,27 @@ export default function MapAddCenter() {
 
         const content = document.createElement("div");
         content.className = "popup-shell";
-        content.innerHTML = `
-      <div class="popup-header">${c.name ?? ""}</div>
+        if (!resourcesListHtml) {
+          content.innerHTML = `<div class="popup-header">${c.name}</div>`;
+        } else {
+          content.innerHTML = `
+      <div class="popup-header">${c.name}</div>
       <div class="popup-body">
         <div class="popup-line"><strong>Resources</strong></div>
         <ul class="popup-list">${resourcesListHtml}</ul>
+        <div class="popup-line"><strong>Needs</strong></div>
+        <ul class="popup-list">${c.needs}</ul>
       </div>
     `;
+        }
 
         // 4) make a popup for THIS marker
         const popup = new mapboxgl.Popup({
           closeButton: true,
           closeOnClick: true,
           offset: 12,
-          className: "clean-popup",
         }).setDOMContent(content);
 
-        // 5) attach it; clicking the marker will open it
         marker.setPopup(popup);
 
         markersRef.current.set(c.id, marker);
@@ -287,6 +302,8 @@ export default function MapAddCenter() {
           return acc;
         }, {});
 
+      const needsArray = needs.map((n) => n.trim()).filter(Boolean);
+
       try {
         // Insert into Supabase
         const { data, error } = await supabase
@@ -296,6 +313,7 @@ export default function MapAddCenter() {
               name: centerName.trim(),
               location: [coords.longitude, coords.latitude],
               resources,
+              needs: needsArray,
             },
           ])
           .select()
@@ -312,6 +330,7 @@ export default function MapAddCenter() {
           resources: data.resources || resources,
           longitude: data.location[0],
           latitude: data.location[1],
+          needs: data.needs,
         };
         console.log(newCenter);
 
@@ -322,6 +341,7 @@ export default function MapAddCenter() {
         setShowCenter(false);
         setCenterName("");
         setResourceRows([{ name: "", status: "available" }]);
+        setNeeds([""]);
 
         // Fly map to new center
         mapRef.current?.flyTo({
@@ -459,17 +479,20 @@ export default function MapAddCenter() {
                 <div className="res-row" key={i}>
                   <input
                     className="res-name"
-                    placeholder="Resource name"
+                    placeholder="Resource"
                     value={row.name}
                     onChange={(e) => updateResourceName(i, e.target.value)}
                   />
                   <select
                     className="res-status"
+                    placeholder="status"
                     value={row.status}
                     onChange={(e) => updateResourceStatus(i, e.target.value)}
                   >
                     {RESOURCE_STATUSES.map((s) => (
-                      <option key={s} value={s}>{s}</option>
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -493,6 +516,41 @@ export default function MapAddCenter() {
               </button>
             </div>
 
+            <label className="label">Needs</label>
+            <div className="needs-rows">
+              {needs.map((name, i) => (
+                <div className="needs-row" key={i}>
+                  <input
+                    className="needs-input"
+                    placeholder="Need"
+                    value={name}
+                    onChange={(e) => updateNeedName(i, e.target.value)}
+                  />
+                  <div className="needs-row-actions">
+                    <button
+                      type="button"
+                      className="btn small"
+                      onClick={() => removeNeedRow(i)}
+                      disabled={needs.length === 1}
+                      title={
+                        needs.length === 1 ? "Keep at least one row" : "Remove"
+                      }
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                className="btn small add-need"
+                onClick={addNeedRow}
+              >
+                + Add need
+              </button>
+            </div>
+
             <button type="submit" className="btn primary">
               Create
             </button>
@@ -503,6 +561,71 @@ export default function MapAddCenter() {
       <div ref={mapContainer} style={{ width: "100%", height: "100vh" }} />
 
       <style>{`
+      
+      .mapboxgl-popup {
+        max-width: 480px;
+        font-family: system-ui, sans-serif;
+        z-index: 9999;
+      }
+
+      .mapboxgl-popup-content {
+        background: #0b1220; 
+        color: #e5e7eb;
+        border-radius: 12px;
+        padding: 0; 
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        overflow: hidden;
+      }
+
+  
+      .popup-header {
+      align-content: center;
+        font-size: 16px;
+        font-weight: 700;
+        padding: 12px 16px;
+        background: #111827;
+        color: #fff;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        position: relative;
+        margin-right: 24px; 
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Body section */
+      .popup-body {
+        padding: 12px 16px;
+        font-size: 14px;
+      }
+
+      .popup-line {
+        margin-bottom: 6px;
+        font-weight: 600;
+      }
+
+      .popup-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .popup-list li {
+        margin-bottom: 4px;
+        font-size: 13px;
+      }
+
+      /* Close button adjustments */
+      .mapboxgl-popup-close-button {
+        top: 8px !important;
+        right: 8px !important;
+        color: #aaa;
+        font-size: 18px;
+      }
+
+      .mapboxgl-popup-close-button:hover {
+        color: #fff;
+      }
       .toolbar { position: fixed; bottom: 20px; right: 12px; z-index: 10; display: flex; gap: 8px; }
       .btn { background:rgb(0, 85, 255); color:white; padding: 8px 12px; border-radius: 10px; cursor: pointer; border:none; }
       .btn.primary { background: #22c55e; color: #0b1220; }
@@ -515,7 +638,7 @@ export default function MapAddCenter() {
         z-index: 10;
         max-width: 100%;
         box-sizing: border-box;
-        width: 250px;
+        width: 350px;
         background: #0b1220;
         color: #e5e7eb;
         border-radius: 12px;
@@ -597,6 +720,46 @@ export default function MapAddCenter() {
         flex-direction: column;
         gap: 4px;
       }
+      .needs-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 4px;
+      }
+
+      .needs-row {
+        display: grid;
+        grid-template-columns: 1fr auto; /* input + small button */
+        gap: 6px;
+        align-items: center;
+      }
+
+      .needs-input {
+        background: #0f172a;
+        color: #e5e7eb;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 14px;
+        height: 36px;
+        box-sizing: border-box;
+        width: 100%;
+      }
+
+      .needs-row-actions .btn.small {
+        height: 28px;
+        padding: 2px 8px;
+      }
+        .resource-row-actions .btn.small {
+        height: 28px;
+        padding: 2px 8px;
+      }
+
+      .btn.small.add-need {
+        width: 100%;
+        text-align: center;
+        margin-top: 4px;
+      }
 
       .res-row {
         display: flex;
@@ -616,20 +779,13 @@ export default function MapAddCenter() {
         font-size: 14px;
         height: 36px; /* same height for name and status */
       }
-      
-      .res-status {
-        padding: 4px 10px; /* small padding for select dropdown */
-        margin-bottom: 8px;
-      }
-
       .btn.small.add-resource,
       .btn.small.delete-resource {
         width: 100%;
         text-align: center;
         margin-top: 2px; /* less gap above buttons */
         margin-bottom: 2px; /* less gap below buttons */
-      }`
-      }</style>
+      }`}</style>
     </>
   );
 }
