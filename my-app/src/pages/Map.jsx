@@ -108,6 +108,133 @@ export default function MapAddCenter() {
     "Tornadoes",
     "Others"
   ];
+
+  useEffect(() => {
+    // --- Disasters table realtime subscription ---
+    const disastersChannel = supabase
+      .channel("disasters-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "disasters" },
+        (payload) => {
+          console.log("Disasters change:", payload);
+
+          if (payload.eventType === "DELETE") {
+            setEonetEvents((prev) =>
+              prev.filter((e) => e.id !== payload.old.id)
+            );
+          } else {
+            const data = payload.new
+            const newDisaster = {
+              id: data.id,
+              name: data.name,
+              disaster_type: data.disaster_type,
+              start_date: data.start_date,
+              longitude: parseFloat(data.affected_area[0]),
+              latitude: parseFloat(data.affected_area[1]),
+              type: "history",
+            }
+            if (payload.eventType === "INSERT") {
+              setEonetEvents((prev) => [...prev, newDisaster]);
+            }
+
+            if (payload.eventType === "UPDATE") {
+              setEonetEvents((prev) =>
+                prev.map((e) => (e.id === payload.new.id ? newDisaster : e))
+              );
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    // --- EONET Events table realtime subscription ---
+    const eonetChannel = supabase
+      .channel("eonet_events-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "eonet_events" },
+        (payload) => {
+          console.log("EONET change:", payload);
+          
+          if (payload.eventType === "DELETE") {
+            setEonetEvents((prev) =>
+              prev.filter((e) => e.id !== payload.old.id)
+            );
+          } else {
+            const data = payload.new
+            const newEonet = {
+              id: data.id,
+              name: data.title,
+              disaster_type: data.disaster_type,
+              longitude: parseFloat(data.geometry[0]),
+              latitude: parseFloat(data.geometry[1]),
+              type: "eonet",
+            }
+            if (payload.eventType === "INSERT") {
+              setEonetEvents((prev) => [...prev, newEonet]);
+            }
+
+            if (payload.eventType === "UPDATE") {
+              setEonetEvents((prev) =>
+                prev.map((e) => (e.id === payload.new.id ? newEonet : e))
+              );
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    // Create a realtime channel for the centers table
+    const centersChannel = supabase.channel('realtime-centers')
+      .on(
+        'postgres_changes', 
+        { event: '*', schema: 'public', table: 'centers', old: 'required' }, 
+        (payload) => {
+          // console.log("Realtime event:", JSON.stringify(payload, null, 2));
+          const data = payload.new;
+
+          if (payload.eventType === 'INSERT') {
+            const newCenter = {
+              id: data.id,
+              name: data.name,
+              resources: data.resources,
+              longitude: data.location[0],
+              latitude: data.location[1],
+              type: "center",
+            };
+            setCenters(prev => [...prev, newCenter]);
+          } else if (payload.eventType === 'UPDATE') {
+              const newCenter = {
+              id: data.id,
+              name: data.name,
+              resources: data.resources,
+              longitude: data.location[0],
+              latitude: data.location[1],
+              type: "center",
+            };
+            setCenters(prev =>
+              prev.map(c => c.id === newCenter.id ? newCenter : c)
+            );
+          } 
+          else if (payload.eventType === 'DELETE') {
+            if (!payload.old) return; // safety check
+            setCenters(prev =>
+              prev.filter(c => c.id !== payload.old.id)
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    // Cleanup when component unmounts
+    return () => {
+      supabase.removeChannel(disastersChannel);
+      supabase.removeChannel(eonetChannel);
+      supabase.removeChannel(centersChannel);
+    };
+  }, []);
+
   // Load centers from Supabase
   useEffect(() => {
     async function loadCenters() {
@@ -225,11 +352,14 @@ export default function MapAddCenter() {
 
     allPins.forEach((c) => {
       if (!markersRef.current.has(c.id)) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "pin-wrapper";
         const el = document.createElement("div");
-        el.className = "pin";
+        el.className = c.type !== "history" ? "pin eonet-pin blinking" : "pin";
         el.title = c.name;
+        wrapper.appendChild(el);
 
-        const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
+        const marker = new mapboxgl.Marker({ element: wrapper, anchor: "bottom" })
           .setLngLat([c.longitude, c.latitude])
           .addTo(mapRef.current);
 
@@ -267,6 +397,9 @@ export default function MapAddCenter() {
         const group = getPinGroup(c);
         el.style.backgroundColor = getPinColor(group);
         el.style.border = "1px solid black";
+        if(group === "Center") {
+          el.style.boxShadow = "0 0 0 4px rgba(34,197,94,0.25)";
+        }
       } else {
         markersRef.current.get(c.id)?.setLngLat([c.longitude, c.latitude]);
       }
@@ -536,8 +669,13 @@ export default function MapAddCenter() {
         box-sizing: border-box;
       }
 
-      .pin { width: 10px; height: 10px; border-radius: 50%; cursor:pointer;}
+      .pin { width: 10px; height: 10px; border-radius: 50%; cursor:pointer; display: block;}
       .pin:hover { transform: scale(1.12); box-shadow: 0 0 0 3px rgba(22,163,74,0.35); }
+      .pin.eonet-pin {
+        width: 15px; 
+        height: 15px;
+        box-shadow: 0 0 0 3px rgba(0,0,0,0.25);
+      }
 
       .checkbox-group {
         display: flex;
@@ -628,6 +766,14 @@ export default function MapAddCenter() {
         text-align: center;
         margin-top: 2px; /* less gap above buttons */
         margin-bottom: 2px; /* less gap below buttons */
+      }
+      @keyframes blink {
+        0%, 100% { opacity: 1.2; transform: scale(1) }
+        50% { opacity: 0.4; transform: scale(1.2) }
+      }
+
+      .blinking {
+        animation: blink 2s infinite;
       }`
       }</style>
     </>
