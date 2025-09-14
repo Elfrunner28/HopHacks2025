@@ -345,7 +345,7 @@ export default function MapAddCenter() {
         // Fly map to new center
         mapRef.current?.flyTo({
           center: [data.location[0], data.location[1]],
-          zoom: 14,
+          zoom: 18,
           essential: true,
         });
       } catch (err) {
@@ -460,101 +460,106 @@ export default function MapAddCenter() {
       )}
 
       {showCenter && (
-        <div className="panel">
-          <div className="panel-title">Create Center</div>
-          <form onSubmit={submitCenter} className="form">
-            <label className="label">
-              Name
-              <input
-                className="input"
-                value={centerName}
-                onChange={(e) => setCenterName(e.target.value)}
-              />
-            </label>
+        <>
+          <div className="modal" onClick={() => setShowCenter(false)}></div>
+          <div className="panel">
+            <div className="panel-title">Create Center</div>
+            <form onSubmit={submitCenter} className="form">
+              <label className="label">
+                Name
+                <input
+                  className="input"
+                  value={centerName}
+                  onChange={(e) => setCenterName(e.target.value)}
+                />
+              </label>
 
-            <label className="label">Resources</label>
-            <div className="res-rows">
-              {resourceRows.map((row, i) => (
-                <div className="res-row" key={i}>
-                  <input
-                    className="res-name"
-                    placeholder="Resource"
-                    value={row.name}
-                    onChange={(e) => updateResourceName(i, e.target.value)}
-                  />
-                  <select
-                    className="res-status"
-                    placeholder="status"
-                    value={row.status}
-                    onChange={(e) => updateResourceStatus(i, e.target.value)}
-                  >
-                    {RESOURCE_STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-
-              <button
-                type="button"
-                className="btn small add-resource"
-                onClick={addResourceRow}
-              >
-                + Add resource
-              </button>
-
-              <button
-                type="button"
-                className="btn small delete-resource"
-                onClick={() => removeResourceRow(resourceRows.length - 1)}
-                disabled={resourceRows.length === 1}
-              >
-                - Delete last resource
-              </button>
-            </div>
-
-            <label className="label">Needs</label>
-            <div className="needs-rows">
-              {needs.map((name, i) => (
-                <div className="needs-row" key={i}>
-                  <input
-                    className="needs-input"
-                    placeholder="Need"
-                    value={name}
-                    onChange={(e) => updateNeedName(i, e.target.value)}
-                  />
-                  <div className="needs-row-actions">
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => removeNeedRow(i)}
-                      disabled={needs.length === 1}
-                      title={
-                        needs.length === 1 ? "Keep at least one row" : "Remove"
-                      }
+              <label className="label">Resources</label>
+              <div className="res-rows">
+                {resourceRows.map((row, i) => (
+                  <div className="res-row" key={i}>
+                    <input
+                      className="res-name"
+                      placeholder="Resource"
+                      value={row.name}
+                      onChange={(e) => updateResourceName(i, e.target.value)}
+                    />
+                    <select
+                      className="res-status"
+                      placeholder="status"
+                      value={row.status}
+                      onChange={(e) => updateResourceStatus(i, e.target.value)}
                     >
-                      ✕
-                    </button>
+                      {RESOURCE_STATUSES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                </div>
-              ))}
+                ))}
 
-              <button
-                type="button"
-                className="btn small add-need"
-                onClick={addNeedRow}
-              >
-                + Add need
+                <button
+                  type="button"
+                  className="btn small add-resource"
+                  onClick={addResourceRow}
+                >
+                  + Add resource
+                </button>
+
+                <button
+                  type="button"
+                  className="btn small delete-resource"
+                  onClick={() => removeResourceRow(resourceRows.length - 1)}
+                  disabled={resourceRows.length === 1}
+                >
+                  - Delete last resource
+                </button>
+              </div>
+
+              <label className="label">Needs</label>
+              <div className="needs-rows">
+                {needs.map((name, i) => (
+                  <div className="needs-row" key={i}>
+                    <input
+                      className="needs-input"
+                      placeholder="Need"
+                      value={name}
+                      onChange={(e) => updateNeedName(i, e.target.value)}
+                    />
+                    <div className="needs-row-actions">
+                      <button
+                        type="button"
+                        className="btn small"
+                        onClick={() => removeNeedRow(i)}
+                        disabled={needs.length === 1}
+                        title={
+                          needs.length === 1
+                            ? "Keep at least one row"
+                            : "Remove"
+                        }
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  className="btn small add-need"
+                  onClick={addNeedRow}
+                >
+                  + Add need
+                </button>
+              </div>
+
+              <button type="submit" className="btn primary">
+                Create
               </button>
-            </div>
-
-            <button type="submit" className="btn primary">
-              Create
-            </button>
-          </form>
-        </div>
+            </form>
+          </div>
+        </>
       )}
 
       <div ref={mapContainer} style={{ width: "100%", height: "100vh" }} />
@@ -630,14 +635,26 @@ export default function MapAddCenter() {
       .btn.primary { background: #22c55e; color: #0b1220; }
       .btn:hover { filter: brightness(1.05); }
 
+            .modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(4px);
+        z-index: 9;
+      }
+
       .panel {
         position: fixed;
-        bottom: 70px;
-        right: 12px;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
         z-index: 10;
         max-width: 100%;
         box-sizing: border-box;
-        width: 350px;
+        width: 550px;
         background: #0b1220;
         color: #e5e7eb;
         border-radius: 12px;
