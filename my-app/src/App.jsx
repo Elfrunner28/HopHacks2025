@@ -7,6 +7,7 @@ import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import MapAddCenter from "./pages/Map";
 import Home from "./pages/Home";
+import User from "./pages/User";
 
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/map" element={<MapAddCenter />} />
         <Route path="/home" element={<Home />} />
+        <Route path="/user" element={<User />} />
       </Routes>
     </Router>
   );
