@@ -63,3 +63,34 @@ export async function fetchEonetEvents() {
     };
   }).filter(Boolean);
 }
+
+// Function to fetch centers and their resources
+export async function fetchCenters() {
+  try {
+    const { data: centers, error } = await supabase
+      .from("centers")
+      .select("id, name, location, created_at, resources");
+
+    if (error) throw error;
+
+    // Format data (unpack location JSON into lng/lat)
+    const formattedCenters = centers.map(center => {
+      const [lng, lat] = center.location || [];
+      console.log(lng, lat);
+      console.log(center.resources);
+      return {
+        id: center.id,
+        name: center.name,
+        created_at: center.created_at,
+        longitude: lng,
+        latitude: lat,
+        resources: center.resources,
+      };
+    });
+
+    return formattedCenters;
+  } catch (err) {
+    console.error("Error fetching centers:", err.message);
+    return [];
+  }
+}
