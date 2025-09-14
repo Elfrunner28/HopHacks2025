@@ -3,7 +3,11 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import Slider from "rc-slider";
 import "rc-slider/assets/index.css";
-import { fetchAllDisasters, fetchEonetEvents, fetchCenters } from "../supabaseData";
+import {
+  fetchAllDisasters,
+  fetchEonetEvents,
+  fetchCenters,
+} from "../supabaseData";
 import { supabase } from "../supabaseClient";
 
 mapboxgl.accessToken =
@@ -27,11 +31,6 @@ export default function MapAddCenter() {
   const [resourceRows, setResourceRows] = useState([
     { name: "", status: "available" },
   ]);
-  const escapeHtml = (text) => {
-      const div = document.createElement("div");
-      div.textContent = text;
-      return div.innerHTML;
-  };
 
   const RESOURCE_STATUSES = ["available", "low", "out"];
 
@@ -230,37 +229,39 @@ export default function MapAddCenter() {
         el.className = "pin";
         el.title = c.name;
 
-        el.addEventListener("click", () => {
-          popupRef.current?.remove();
-          const content = document.createElement("div");
-          content.className = "popup-shell";
-          content.innerHTML = `
-            <div class="popup-header">${c.name}</div>
-            <div class="popup-body">
-              <div class="popup-line"><strong>Resources</strong></div>
-              <ul class="popup-list">
-                ${
-                  c.resources?.length
-                    ? c.resources.map((r) => `<li>${escapeHtml(r)}</li>`).join("")
-                    : "<li>(none listed)</li>"
-                }
-              </ul>
-            </div>
-          `;
-          popupRef.current = new mapboxgl.Popup({
-            closeButton: true,
-            closeOnClick: true,
-            offset: 12,
-            className: "clean-popup",
-          })
-            .setLngLat([c.longitude, c.latitude])
-            .setDOMContent(content)
-            .addTo(mapRef.current);
-        });
-
         const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
           .setLngLat([c.longitude, c.latitude])
           .addTo(mapRef.current);
+
+        // 3) build popup HTML NOW (not in click), using your dict
+        let resourcesListHtml = "<li>(none listed)</li>";
+        if (c.resources && typeof c.resources === "object") {
+          const items = Object.entries(c.resources).map(
+            ([name, status]) => `<li>${status} - ${name}</li>`
+          );
+          if (items.length) resourcesListHtml = items.join("");
+        }
+
+        const content = document.createElement("div");
+        content.className = "popup-shell";
+        content.innerHTML = `
+      <div class="popup-header">${c.name ?? ""}</div>
+      <div class="popup-body">
+        <div class="popup-line"><strong>Resources</strong></div>
+        <ul class="popup-list">${resourcesListHtml}</ul>
+      </div>
+    `;
+
+        // 4) make a popup for THIS marker
+        const popup = new mapboxgl.Popup({
+          closeButton: true,
+          closeOnClick: true,
+          offset: 12,
+          className: "clean-popup",
+        }).setDOMContent(content);
+
+        // 5) attach it; clicking the marker will open it
+        marker.setPopup(popup);
 
         markersRef.current.set(c.id, marker);
         const group = getPinGroup(c);
@@ -290,7 +291,13 @@ export default function MapAddCenter() {
         // Insert into Supabase
         const { data, error } = await supabase
           .from("centers")
-          .insert([{ name: centerName.trim(), location: [coords.longitude, coords.latitude], resources }])
+          .insert([
+            {
+              name: centerName.trim(),
+              location: [coords.longitude, coords.latitude],
+              resources,
+            },
+          ])
           .select()
           .single();
 
@@ -326,7 +333,6 @@ export default function MapAddCenter() {
         console.error("Unexpected error inserting center:", err);
       }
     });
-
   };
   useEffect(() => {
     if (activeDataset === "history") {
@@ -339,14 +345,18 @@ export default function MapAddCenter() {
         <button
           className="btn"
           onClick={() => setActiveDataset("live")}
-          style={{ background: activeDataset === "live" ? "#22c55e" : undefined }}
+          style={{
+            background: activeDataset === "live" ? "#22c55e" : undefined,
+          }}
         >
           Live
         </button>
         <button
           className="btn"
           onClick={() => setActiveDataset("history")}
-          style={{ background: activeDataset === "history" ? "#22c55e" : undefined }}
+          style={{
+            background: activeDataset === "history" ? "#22c55e" : undefined,
+          }}
         >
           History
         </button>
@@ -369,42 +379,41 @@ export default function MapAddCenter() {
         <div className="panel">
           <div className="panel-title">Filter Disasters</div>
           <div className="checkbox-group">
-          <button
-            type="button"
-            className="btn small"
-            onClick={() => {
-              if (filter.disasterTypes.length === uniqueTypes.length) {
-                // Deselect all
-                setFilter({ ...filter, disasterTypes: [] });
-              } else {
-                // Select all
-                setFilter({ ...filter, disasterTypes: [...uniqueTypes] });
-              }
-            }}
-          >
-            All
-          </button>
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => {
+                if (filter.disasterTypes.length === uniqueTypes.length) {
+                  // Deselect all
+                  setFilter({ ...filter, disasterTypes: [] });
+                } else {
+                  // Select all
+                  setFilter({ ...filter, disasterTypes: [...uniqueTypes] });
+                }
+              }}
+            >
+              All
+            </button>
 
-          {uniqueTypes.map((type) => (
-            <label key={type} className="label">
-              <input
-                type="checkbox"
-                checked={filter.disasterTypes.includes(type)}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  setFilter((prev) => {
-                    const types = new Set(prev.disasterTypes);
-                    if (checked) types.add(type);
-                    else types.delete(type);
-                    return { ...prev, disasterTypes: Array.from(types) };
-                  });
-                }}
-              />
-              {type}
-            </label>
-          ))}
-        </div>
-
+            {uniqueTypes.map((type) => (
+              <label key={type} className="label">
+                <input
+                  type="checkbox"
+                  checked={filter.disasterTypes.includes(type)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setFilter((prev) => {
+                      const types = new Set(prev.disasterTypes);
+                      if (checked) types.add(type);
+                      else types.delete(type);
+                      return { ...prev, disasterTypes: Array.from(types) };
+                    });
+                  }}
+                />
+                {type}
+              </label>
+            ))}
+          </div>
 
           <div className="year-slider">
             <label className="label">Year: {filter.year}</label>
@@ -413,12 +422,18 @@ export default function MapAddCenter() {
                 min={2015}
                 max={2025}
                 step={1}
-                value={filter.year}                         
-                onChange={(v) => setFilter(prev => ({ ...prev, year: v }))}
-                marks={{ 2015: "2015", 2025: "2025" }}  // only min/max labels
-                railStyle={{ backgroundColor: "#1e293b", height: 6 }}  // slider background
+                value={filter.year}
+                onChange={(v) => setFilter((prev) => ({ ...prev, year: v }))}
+                marks={{ 2015: "2015", 2025: "2025" }} // only min/max labels
+                railStyle={{ backgroundColor: "#1e293b", height: 6 }} // slider background
                 trackStyle={{ backgroundColor: "#1e293b", height: 6 }} // same as rail so no green track
-                handleStyle={{ borderColor: "#22c55e", backgroundColor: "#22c55e", width: 16, height: 16, marginTop: -5 }}
+                handleStyle={{
+                  borderColor: "#22c55e",
+                  backgroundColor: "#22c55e",
+                  width: 16,
+                  height: 16,
+                  marginTop: -5,
+                }}
               />
             </div>
           </div>
