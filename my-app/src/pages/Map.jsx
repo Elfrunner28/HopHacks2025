@@ -269,7 +269,6 @@ export default function MapAddCenter() {
     `;
         }
 
-        // 4) make a popup for THIS marker
         const popup = new mapboxgl.Popup({
           closeButton: true,
           closeOnClick: true,
