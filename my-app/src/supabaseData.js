@@ -25,7 +25,6 @@ export async function fetchAllDisasters(batchSize = 1000) {
           name: d.name,
           disaster_type: d.disaster_type,
           start_date: d.start_date,
-          resources: [],
           longitude: parseFloat(d.affected_area[0]),
           latitude: parseFloat(d.affected_area[1]),
           type: "history",
@@ -47,16 +46,15 @@ export async function fetchAllDisasters(batchSize = 1000) {
 export async function fetchEonetEvents() {
   const { data, error } = await supabase
     .from("eonet_events")
-    .select("eonet_id, title, geometry, category");
+    .select("id, title, geometry, category");
 
   if (error) throw error;
 
   return data.map((event) => {
     if (!event.geometry || !Array.isArray(event.geometry) || event.geometry.length < 2) return null;
     return {
-      id: event.eonet_id,
+      id: event.id,
       name: event.title,
-      resources: [],
       longitude: parseFloat(event.geometry[0]),
       latitude: parseFloat(event.geometry[1]),
       type: "eonet",
@@ -83,6 +81,7 @@ export async function fetchCenters() {
         created_at: center.created_at,
         longitude: lng,
         latitude: lat,
+        type: "center",
         resources: center.resources,
       };
     });
