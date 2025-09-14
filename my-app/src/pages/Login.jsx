@@ -23,7 +23,7 @@ const Login = () => {
     } else {
       console.log({ data });
       // This fetch call can be removed if you handle the logic on the /home page
-      const response = await fetch(`https://safezone-1tqx.onrender.com/check-state`, { //make it localhost:5000 while running in local
+      const response = await fetch(`${REACT_APP_API_URL}/check-state`, { //make it localhost:5000 while running in local
         method: "POST",
         headers: {
           "Content-Type": "application/json",
