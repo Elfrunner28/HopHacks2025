@@ -23,7 +23,7 @@ export default function MapAddCenter() {
   const [disasters, setDisasters] = useState([]);
   const [eonetEvents, setEonetEvents] = useState([]);
 
-  const [activeDataset, setActiveDataset] = useState("live"); // "live" or "history"
+  const [activeDataset, setActiveDataset] = useState("live");
   const [filter, setFilter] = useState({ disasterTypes: [], year: 2025 });
 
   const [showCenter, setShowCenter] = useState(false);
@@ -121,7 +121,7 @@ export default function MapAddCenter() {
               prev.filter((e) => e.id !== payload.old.id)
             );
           } else {
-            const data = payload.new
+            const data = payload.new;
             const newDisaster = {
               id: data.id,
               name: data.name,
@@ -130,7 +130,7 @@ export default function MapAddCenter() {
               longitude: parseFloat(data.affected_area[0]),
               latitude: parseFloat(data.affected_area[1]),
               type: "history",
-            }
+            };
             if (payload.eventType === "INSERT") {
               setEonetEvents((prev) => [...prev, newDisaster]);
             }
@@ -153,13 +153,13 @@ export default function MapAddCenter() {
         { event: "*", schema: "public", table: "eonet_events" },
         (payload) => {
           console.log("EONET change:", payload);
-          
+
           if (payload.eventType === "DELETE") {
             setEonetEvents((prev) =>
               prev.filter((e) => e.id !== payload.old.id)
             );
           } else {
-            const data = payload.new
+            const data = payload.new;
             const newEonet = {
               id: data.id,
               name: data.title,
@@ -167,7 +167,7 @@ export default function MapAddCenter() {
               longitude: parseFloat(data.geometry[0]),
               latitude: parseFloat(data.geometry[1]),
               type: "eonet",
-            }
+            };
             if (payload.eventType === "INSERT") {
               setEonetEvents((prev) => [...prev, newEonet]);
             }
@@ -182,16 +182,15 @@ export default function MapAddCenter() {
       )
       .subscribe();
 
-    // Create a realtime channel for the centers table
-    const centersChannel = supabase.channel('realtime-centers')
+    const centersChannel = supabase
+      .channel("realtime-centers")
       .on(
-        'postgres_changes', 
-        { event: '*', schema: 'public', table: 'centers', old: 'required' }, 
+        "postgres_changes",
+        { event: "*", schema: "public", table: "centers", old: "required" },
         (payload) => {
-          // console.log("Realtime event:", JSON.stringify(payload, null, 2));
           const data = payload.new;
 
-          if (payload.eventType === 'INSERT') {
+          if (payload.eventType === "INSERT") {
             const newCenter = {
               id: data.id,
               name: data.name,
@@ -200,9 +199,9 @@ export default function MapAddCenter() {
               latitude: data.location[1],
               type: "center",
             };
-            setCenters(prev => [...prev, newCenter]);
-          } else if (payload.eventType === 'UPDATE') {
-              const newCenter = {
+            setCenters((prev) => [...prev, newCenter]);
+          } else if (payload.eventType === "UPDATE") {
+            const newCenter = {
               id: data.id,
               name: data.name,
               resources: data.resources,
@@ -210,15 +209,12 @@ export default function MapAddCenter() {
               latitude: data.location[1],
               type: "center",
             };
-            setCenters(prev =>
-              prev.map(c => c.id === newCenter.id ? newCenter : c)
+            setCenters((prev) =>
+              prev.map((c) => (c.id === newCenter.id ? newCenter : c))
             );
-          } 
-          else if (payload.eventType === 'DELETE') {
+          } else if (payload.eventType === "DELETE") {
             if (!payload.old) return; // safety check
-            setCenters(prev =>
-              prev.filter(c => c.id !== payload.old.id)
-            );
+            setCenters((prev) => prev.filter((c) => c.id !== payload.old.id));
           }
         }
       )
@@ -371,7 +367,10 @@ export default function MapAddCenter() {
         el.title = c.name;
         wrapper.appendChild(el);
 
-        const marker = new mapboxgl.Marker({ element: wrapper, anchor: "bottom" })
+        const marker = new mapboxgl.Marker({
+          element: wrapper,
+          anchor: "bottom",
+        })
           .setLngLat([c.longitude, c.latitude])
           .addTo(mapRef.current);
 
@@ -382,6 +381,8 @@ export default function MapAddCenter() {
           );
           if (items.length) resourcesListHtml = items.join("");
         }
+
+        let navigationLink = null;
 
         const content = document.createElement("div");
         content.className = "popup-shell";
@@ -411,7 +412,7 @@ export default function MapAddCenter() {
         const group = getPinGroup(c);
         el.style.backgroundColor = getPinColor(group);
         el.style.border = "1px solid black";
-        if(group === "Center") {
+        if (group === "Center") {
           el.style.boxShadow = "0 0 0 4px rgba(34,197,94,0.25)";
         }
       } else {
@@ -598,7 +599,10 @@ export default function MapAddCenter() {
           <div className="panel">
             <div className="panel-title">Create Center</div>
             <form onSubmit={submitCenter} className="form">
-              <label className="label">
+              <label
+                className="label"
+                style={{ fontSize: "22px", color: "#000000" }}
+              >
                 Name
                 <input
                   className="input"
@@ -607,7 +611,12 @@ export default function MapAddCenter() {
                 />
               </label>
 
-              <label className="label">Resources</label>
+              <label
+                className="label"
+                style={{ fontSize: "22px", color: "#000000" }}
+              >
+                Resources
+              </label>
               <div className="res-rows">
                 {resourceRows.map((row, i) => (
                   <div className="res-row" key={i}>
@@ -634,7 +643,7 @@ export default function MapAddCenter() {
 
                 <button
                   type="button"
-                  className="btn small add-resource"
+                  className="btn small resource"
                   onClick={addResourceRow}
                 >
                   + Add resource
@@ -642,7 +651,7 @@ export default function MapAddCenter() {
 
                 <button
                   type="button"
-                  className="btn small delete-resource"
+                  className="btn small resource"
                   onClick={() => removeResourceRow(resourceRows.length - 1)}
                   disabled={resourceRows.length === 1}
                 >
@@ -650,7 +659,12 @@ export default function MapAddCenter() {
                 </button>
               </div>
 
-              <label className="label">Needs</label>
+              <label
+                className="label"
+                style={{ fontSize: "22px", color: "#000000" }}
+              >
+                Needs
+              </label>
               <div className="needs-rows">
                 {needs.map((name, i) => (
                   <div className="needs-row" key={i}>
@@ -702,7 +716,7 @@ export default function MapAddCenter() {
       .mapboxgl-popup {
         max-width: 480px;
         font-family: system-ui, sans-serif;
-        z-index: 9999;
+        z-index: 80;
       }
 
       .mapboxgl-popup-content {
@@ -784,25 +798,26 @@ export default function MapAddCenter() {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        z-index: 10;
+        z-index: 100;
         max-width: 100%;
         box-sizing: border-box;
         width: 550px;
-        background: #0b1220;
-        color: #e5e7eb;
+        background: #ffffff;   
+        color: #000000;        
+        border: 1px solid #000;
         border-radius: 12px;
         padding: 12px;
       }
       
-      .panel-title { font-weight: 700; margin-bottom: 8px; }
+      .panel-title { font-weight: 700; margin-bottom: 15px; font-size: 30px }
       .form { display: grid; gap: 10px; }
       .label { display: grid; gap: 6px; font-size: 12px; color: #cbd5e1; }
       .input {
-        background: #0f172a;
-        color: #e5e7eb;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: #ffffff;
+        color: #000000;
+        border: 1px solid #000000;
         padding: 8px 10px;
-        border-radius: 8px;
+        border-radius: 6px;
         font-size: 14px;
         width: 100%; /* full width */
         box-sizing: border-box;
@@ -831,18 +846,20 @@ export default function MapAddCenter() {
       }
 
       .btn.small {
-        align-self: flex-start;
-        background: #0b1220;
-        color: #e5e7eb;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        padding: 2px 6px;
+        align-self: center;
+        background: #ffffff;
+        color: #000000;
+        border: 1px solid #000000;
+        
         border-radius: 6px;
         cursor: pointer;
-        font-size: 10px;
-        margin-bottom: 6px;
+        font-size: 14px;
+        margin-bottom: 10px;
+        width: 100%;
+        height: 100%;
       }
       .btn.small:hover {
-        background: #1e293b;
+        background: #00FF00;
       }
       .year-slider {
         display: flex;
@@ -872,7 +889,7 @@ export default function MapAddCenter() {
       .res-rows {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 10px;
       }
       .needs-rows {
         display: flex;
@@ -888,10 +905,10 @@ export default function MapAddCenter() {
         align-items: center;
       }
 
-      .needs-input {
-        background: #0f172a;
-        color: #e5e7eb;
-        border: 1px solid rgba(255,255,255,0.1);
+      .needs-input  {
+        background: #ffffff;
+        color: #000000;
+        border: 1px solid #000000;
         border-radius: 8px;
         padding: 8px 10px;
         font-size: 14px;
@@ -913,6 +930,7 @@ export default function MapAddCenter() {
         width: 100%;
         text-align: center;
         margin-top: 4px;
+        font-size: 14px;
       }
 
       .res-row {
@@ -925,9 +943,9 @@ export default function MapAddCenter() {
       .res-status {
         width: 100%;
         box-sizing: border-box;
-        background: #0f172a;
-        color: #e5e7eb;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: #fffff;
+        color: #000000;
+        border: 1px solid #000000;
         border-radius: 8px;
         padding: 8px 10px;
         font-size: 14px;
@@ -947,8 +965,7 @@ export default function MapAddCenter() {
 
       .blinking {
         animation: blink 2s infinite;
-      }`
-      }</style>
+      }`}</style>
     </>
   );
 }
