@@ -29,6 +29,7 @@ const Login = () => {
         body: JSON.stringify({
           state: data?.user?.user_metadata?.state,
           userEmail: email,
+          name: data?.user?.user_metadata?.name
         }),
       });
 
