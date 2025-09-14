@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { supabase } from "../supabaseClient"; // adjust path if needed
+import Slider from "rc-slider";
+import "rc-slider/assets/index.css";
+import { fetchAllDisasters, fetchEonetEvents } from "../supabaseData";
 
 mapboxgl.accessToken =
   "pk.eyJ1IjoiYm9ta2EtMjciLCJhIjoiY21maHd3a3htMDE1ZjJrcHU3cXNrYjF3YSJ9.vGnAnTPwaGpTDso10ytKgg";
@@ -14,10 +16,39 @@ export default function MapAddCenter() {
 
   const [centers, setCenters] = useState([]);
   const [disasters, setDisasters] = useState([]);
-  const [eonetEvents, setEonetEvents] = useState([]); // <-- ADDED
+  const [eonetEvents, setEonetEvents] = useState([]);
+
+  const [activeDataset, setActiveDataset] = useState("live"); // "live" or "history"
+  const [filter, setFilter] = useState({ disasterTypes: [], year: 2025 });
+
   const [showCenter, setShowCenter] = useState(false);
   const [centerName, setCenterName] = useState("");
   const [centerResources, setCenterResources] = useState("");
+
+  // Major disaster types
+  const majorDisasters = [
+    "Fire",
+    "Severe Storm",
+    "Flood",
+    "Hurricane",
+    "Tornado",
+    "Earthquake",
+    "Winter Storm",
+    "Tropical Storm",
+  ];
+
+  const allDisasterTypes = [
+    "Fire", "Severe Storm", "Straight-Line Winds", "Flood", "Hurricane",
+    "Biological", "Winter Storm", "Tornado", "Tropical Storm", "Earthquake",
+    "Typhoon", "Snowstorm", "Freezing", "Mud/Landslide", "Coastal Storm",
+    "Severe Ice Storm", "Dam/Levee Break", "Volcanic Eruption",
+    "Tropical Depression", "Toxic Substances", "Chemical", "Terrorist",
+    "Drought", "Human Cause", "Fishing Losses", "Tsunami", "Other"
+  ];
+
+  const uniqueTypes = Array.from(
+    new Set(allDisasterTypes.map((type) => (majorDisasters.includes(type) ? type : "Other")))
+  );
 
   // Initialize map
   useEffect(() => {
@@ -31,20 +62,16 @@ export default function MapAddCenter() {
     });
 
     mapRef.current.once("load", () => {
-      centerToMyLocation();
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords;
+            mapRef.current.flyTo({ center: [longitude, latitude], zoom: 14 });
+          },
+          (err) => console.warn("Geolocation error:", err)
+        );
+      }
     });
-
-    function centerToMyLocation() {
-      if (!("geolocation" in navigator)) return;
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          mapRef.current.flyTo({ center: [longitude, latitude], zoom: 14 });
-        },
-        (err) => console.warn("Geolocation error:", err)
-      );
-    }
 
     return () => {
       popupRef.current?.remove();
@@ -55,92 +82,53 @@ export default function MapAddCenter() {
     };
   }, []);
 
-  // Fetch disasters from Supabase
+  // Fetch disasters
   useEffect(() => {
-    async function fetchDisasters() {
-      const { data, error } = await supabase
-        .from("disasters")
-        .select("*", { count: "exact" })
-        .limit(10000);
-      // .select("id, name, disaster_type, affected_area, start_date") // pick only necessary columns
-      // .eq("disaster_type", "Flood") // filter for specific type
-      // .order("start_date", { ascending: false });
-
-      if (error) {
-        console.error("Failed to fetch disasters:", error);
-        return;
+    async function getDisasters() {
+      try {
+        const pins = await fetchAllDisasters();
+        setDisasters(pins);
+      } catch (err) {
+        console.error("Failed to fetch disasters:", err);
       }
-      console.log(data);
-
-      const pins = data
-        .map((d) => {
-          if (!d.affected_area) return null;
-          let lon = parseFloat(d.affected_area[0]);
-          let lat = parseFloat(d.affected_area[1]);
-          return {
-            id: d.id,
-            name: d.name,
-            resources: [], // if any resources or extra info
-            longitude: lon,
-            latitude: lat,
-          };
-        })
-        .filter(Boolean);
-
-      setCenters(pins);
     }
-
-    fetchDisasters();
+    getDisasters();
   }, []);
 
-  // <-- ADDED: Fetch EONET events from Supabase -->
+  // Fetch EONET events
   useEffect(() => {
-    async function fetchEonetEvents() {
-      const { data, error } = await supabase
-        .from("eonet_events")
-        .select("eonet_id, title, geometry"); // Select only needed columns
-
-      if (error) {
-        console.error("Failed to fetch eonet_events:", error);
-        return;
+    async function getEonetEvents() {
+      try {
+        const pins = await fetchEonetEvents();
+        setEonetEvents(pins);
+      } catch (err) {
+        console.error("Failed to fetch eonet events:", err);
       }
-
-      const pins = data
-        .map((event) => {
-          // Ensure geometry data is valid
-          if (
-            !event.geometry ||
-            !Array.isArray(event.geometry) ||
-            event.geometry.length < 2
-          ) {
-            return null;
-          }
-          return {
-            id: event.eonet_id, // Use the unique ID from the table
-            name: event.title,
-            resources: [], // Set empty resources to match the popup format
-            longitude: parseFloat(event.geometry[0]),
-            latitude: parseFloat(event.geometry[1]),
-            type: "eonet", // IMPORTANT: Add a type identifier
-          };
-        })
-        .filter(Boolean); // Filter out any null entries
-
-      setEonetEvents(pins);
     }
+    getEonetEvents();
+  }, []);
 
-    fetchEonetEvents();
-  }, []); // Empty dependency array so it only runs once on mount
-  // <-- END OF ADDED BLOCK -->
-
-  // Render markers for centers + disasters
+  // Render markers
   useEffect(() => {
     if (!mapRef.current) return;
 
-    // <-- MODIFIED: Combine all data sources -->
-    const allPins = [...disasters, ...centers, ...eonetEvents];
+    let allPins = [];
+    if (activeDataset === "live") {
+      allPins = eonetEvents;
+    } else if (activeDataset === "history") {
+      allPins = disasters.filter((d) => {
+        const type = majorDisasters.includes(d.disaster_type) ? d.disaster_type : "Other";
 
-    // remove old markers
+        const matchType =
+          filter.disasterTypes.length > 0 ? filter.disasterTypes.includes(type) : false;
+        const matchYear =
+          !filter.year || new Date(d.start_date).getFullYear() === filter.year;
+
+        return matchType && matchYear;
+      });
+    }
+
+    // Remove old markers
     for (const [id, marker] of markersRef.current.entries()) {
       if (!allPins.find((c) => c.id === id)) {
         marker.remove();
@@ -151,10 +139,7 @@ export default function MapAddCenter() {
     allPins.forEach((c) => {
       if (!markersRef.current.has(c.id)) {
         const el = document.createElement("div");
-
-        // <-- MODIFIED: Conditionally assign class based on the type -->
         el.className = c.type === "eonet" ? "pin eonet-pin" : "pin";
-
         el.title = c.name;
 
         el.addEventListener("click", () => {
@@ -168,9 +153,7 @@ export default function MapAddCenter() {
               <ul class="popup-list">
                 ${
                   c.resources?.length
-                    ? c.resources
-                        .map((r) => `<li>${escapeHtml(r)}</li>`)
-                        .join("")
+                    ? c.resources.map((r) => `<li>${escapeHtml(r)}</li>`).join("")
                     : "<li>(none listed)</li>"
                 }
               </ul>
@@ -196,18 +179,15 @@ export default function MapAddCenter() {
         markersRef.current.get(c.id)?.setLngLat([c.longitude, c.latitude]);
       }
     });
-  }, [centers, disasters, eonetEvents]); // <-- MODIFIED: Added eonetEvents to dependency array
+  }, [activeDataset, eonetEvents, disasters, filter]);
 
   const submitCenter = async (e) => {
     e.preventDefault();
     if (!centerName) return alert("name not provided");
-    if (!navigator.geolocation) return console.log("Geolocation not supported");
+    if (!navigator.geolocation) return;
 
     navigator.geolocation.getCurrentPosition(({ coords }) => {
-      const resources = centerResources
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const resources = centerResources.split(",").map((s) => s.trim()).filter(Boolean);
 
       const newCenter = {
         id: String(Date.now()),
@@ -222,9 +202,7 @@ export default function MapAddCenter() {
       setCenterName("");
       setCenterResources("");
 
-      mapRef.current?.flyTo({
-        center: [newCenter.longitude, newCenter.latitude],
-      });
+      mapRef.current?.flyTo({ center: [newCenter.longitude, newCenter.latitude] });
     });
   };
 
@@ -237,10 +215,85 @@ export default function MapAddCenter() {
   return (
     <>
       <div className="toolbar">
+        <button
+          className="btn"
+          onClick={() => setActiveDataset("live")}
+          style={{ background: activeDataset === "live" ? "#22c55e" : undefined }}
+        >
+          Live
+        </button>
+        <button
+          className="btn"
+          onClick={() => setActiveDataset("history")}
+          style={{ background: activeDataset === "history" ? "#22c55e" : undefined }}
+        >
+          History
+        </button>
         <button className="btn" onClick={() => setShowCenter((s) => !s)}>
           {showCenter ? "Close" : "Add Center"}
         </button>
       </div>
+
+      {activeDataset === "history" && (
+        <div className="panel">
+          <div className="panel-title">Filter Disasters</div>
+          <div className="checkbox-group">
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => {
+              if (filter.disasterTypes.length === uniqueTypes.length) {
+                // Deselect all
+                setFilter({ ...filter, disasterTypes: [] });
+              } else {
+                // Select all
+                setFilter({ ...filter, disasterTypes: [...uniqueTypes] });
+              }
+            }}
+          >
+            All
+          </button>
+
+          {uniqueTypes.map((type) => (
+            <label key={type} className="label">
+              <input
+                type="checkbox"
+                checked={filter.disasterTypes.includes(type)}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setFilter((prev) => {
+                    const types = new Set(prev.disasterTypes);
+                    if (checked) types.add(type);
+                    else types.delete(type);
+                    return { ...prev, disasterTypes: Array.from(types) };
+                  });
+                }}
+              />
+              {type}
+            </label>
+          ))}
+        </div>
+
+
+          <div className="year-slider">
+            <label className="label">Year</label>
+            <div className="slider-wrapper">
+              <Slider
+                min={2015}
+                max={2025}
+                step={1}
+                value={filter.year}                         
+                onChange={(v) => setFilter(prev => ({ ...prev, year: v }))}
+                marks={{ 2015: "2015", 2025: "2025" }}  // only min/max labels
+                railStyle={{ backgroundColor: "#1e293b", height: 6 }}  // slider background
+                trackStyle={{ backgroundColor: "#1e293b", height: 6 }} // same as rail so no green track
+                handleStyle={{ borderColor: "#22c55e", backgroundColor: "#22c55e", width: 16, height: 16, marginTop: -5 }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCenter && (
         <div className="panel">
           <div className="panel-title">Create Center</div>
@@ -249,28 +302,25 @@ export default function MapAddCenter() {
               Name
               <input
                 className="input"
-                placeholder=""
                 value={centerName}
                 onChange={(e) => setCenterName(e.target.value)}
               />
             </label>
-
             <label className="label">
               Resources
               <input
                 className="input"
-                placeholder=""
                 value={centerResources}
                 onChange={(e) => setCenterResources(e.target.value)}
               />
             </label>
-
             <button type="submit" className="btn primary">
               Create
             </button>
           </form>
         </div>
       )}
+
       <div ref={mapContainer} style={{ width: "100%", height: "100vh" }} />
 
       <style>{`
@@ -288,16 +338,62 @@ export default function MapAddCenter() {
         .pin { width: 14px; height: 14px; border-radius: 50%; background: rgb(0,68,255); box-shadow: 0 0 0 3px rgba(22,163,74,0.25); cursor:pointer; }
         .pin:hover { transform: scale(1.12); box-shadow: 0 0 0 4px rgba(22,163,74,0.35); }
 
-        /* --- ADDED FOR EONET PINS --- */
-        .eonet-pin {
-          background: #E53E3E; /* A bright red color */
-          box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.3); /* A matching red shadow */
+        .eonet-pin { background: #E53E3E; box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.3); }
+        .eonet-pin:hover { box-shadow: 0 0 0 4px rgba(229, 62, 62, 0.4); }
+        .checkbox-group {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
         }
-        .eonet-pin:hover {
-          box-shadow: 0 0 0 4px rgba(229, 62, 62, 0.4); /* Override the green hover shadow */
+
+        .checkbox-group .label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          color: #cbd5e1;
         }
-        /* ---------------------------- */
-      `}</style>
+
+        .btn.small {
+          align-self: flex-start;
+          background: #0b1220;
+          color: #e5e7eb;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          padding: 2px 6px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 10px;
+          margin-bottom: 6px;
+        }
+        .btn.small:hover {
+          background: #1e293b;
+        }
+        .year-slider {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin-bottom: 8px;
+          width: 100%; /* full panel width */
+          align-items: center; /* center the wrapper */
+        }
+
+        .slider-wrapper {
+          width: 90%; /* fixed slider width */
+        }
+        .slider-labels {
+          display: flex;
+          justify-content: space-between;
+          font-size: 12px;
+          color: #cbd5e1;
+        }
+        .year-range-slider {
+          margin-top: 6px;
+        }
+        .rc-slider-mark-text{
+          color: #999;
+          margin-top: -3px;
+        } `
+      }</style>
     </>
   );
 }
