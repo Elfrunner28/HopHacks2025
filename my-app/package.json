@@ -17,6 +17,10 @@
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "mapbox-gl": "^3.15.0",
+<<<<<<< HEAD
+=======
+    "openai": "^5.20.2",
+>>>>>>> fce76db4fa83b0fddfb5dca8bf83b5630bf529e9
     "rc-slider": "^11.1.9",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
