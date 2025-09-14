@@ -152,7 +152,7 @@ export default function MapAddCenter() {
 
     let allPins = [];
     if (activeDataset === "live") {
-      allPins = eonetEvents;
+      allPins = [...eonetEvents, ...centers];
     } else if (activeDataset === "history") {
       allPins = disasters.filter((d) => {
         const type = majorDisasters.includes(d.disaster_type) ? d.disaster_type : "Other";
@@ -217,7 +217,7 @@ export default function MapAddCenter() {
         markersRef.current.get(c.id)?.setLngLat([c.longitude, c.latitude]);
       }
     });
-  }, [activeDataset, eonetEvents, disasters, filter]);
+  }, [activeDataset, eonetEvents, disasters, filter, centers]);
 
   const submitCenter = async (e) => {
     e.preventDefault();
