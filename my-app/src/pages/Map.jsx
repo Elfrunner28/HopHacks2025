@@ -32,7 +32,7 @@ export default function MapAddCenter() {
       div.textContent = text;
       return div.innerHTML;
   };
-  
+
   const RESOURCE_STATUSES = ["available", "low", "out"];
 
   function statusClass(s) {
@@ -47,32 +47,68 @@ export default function MapAddCenter() {
         return "badge";
     }
   }
+  function getPinGroup(c) {
+    if (c.disaster_type) {
+      // for disasters
+      return getDisasterGroup(c.disaster_type);
+    } else if (c.resources) {
+      // user-created centers
+      return "Center";
+    }
+    return "Others";
+  }
+  function getPinColor(group) {
+    switch (group) {
+      case "Fire": return "#FF4500";          // orange-red
+      case "Flood": return "#1E90FF";         // dodger blue
+      case "Earthquake": return "#8B0000";    // dark red
+      case "Severe Storms": return "#FFD700"; // gold
+      case "Tropical Cyclones": return "#00CED1"; // dark turquoise
+      case "Tornadoes": return "#800080";     // purple
+      case "Center": return "#22c55e";        // green
+      default: return "#808080";              // gray for Others
+    }
+  }
+  function getDisasterGroup(type) {
+    const t = type.toLowerCase();
 
-  // Major disaster types
-  const majorDisasters = [
+    if (t.includes('fire')) return "Fire";
+    if (t.includes('flood')) return "Flood";
+    if (t.includes('earthquake')) return "Earthquake";
+    if (t.includes('tornado')) return "Tornado";
+
+    // Severe Storms group
+    const severeStorms = [
+      "Straight-Line Winds",
+      "Winter Storm",
+      "Snowstorm",
+      "Coastal Storm",
+      "Severe Ice Storm"
+    ];
+    if (severeStorms.includes(type)) return "Severe Storms";
+
+    // Tropical Cyclones group
+    const tropicalCyclones = [
+      "Hurricane",
+      "Typhoon",
+      "Tropical Storm",
+      "Tropical Depression"
+    ];
+    if (tropicalCyclones.includes(type)) return "Tropical Cyclones";
+
+    // Everything else goes into Others
+    return "Others";
+  }
+
+  const uniqueTypes = [
     "Fire",
-    "Severe Storm",
     "Flood",
-    "Hurricane",
-    "Tornado",
     "Earthquake",
-    "Winter Storm",
-    "Tropical Storm",
+    "Severe Storms",
+    "Tropical Cyclones",
+    "Tornadoes",
+    "Others"
   ];
-
-  const allDisasterTypes = [
-    "Fire", "Severe Storm", "Straight-Line Winds", "Flood", "Hurricane",
-    "Biological", "Winter Storm", "Tornado", "Tropical Storm", "Earthquake",
-    "Typhoon", "Snowstorm", "Freezing", "Mud/Landslide", "Coastal Storm",
-    "Severe Ice Storm", "Dam/Levee Break", "Volcanic Eruption",
-    "Tropical Depression", "Toxic Substances", "Chemical", "Terrorist",
-    "Drought", "Human Cause", "Fishing Losses", "Tsunami", "Other"
-  ];
-
-  const uniqueTypes = Array.from(
-    new Set(allDisasterTypes.map((type) => (majorDisasters.includes(type) ? type : "Other")))
-  );
-
   // Load centers from Supabase
   useEffect(() => {
     async function loadCenters() {
@@ -170,10 +206,9 @@ export default function MapAddCenter() {
       allPins = [...eonetEvents, ...centers];
     } else if (activeDataset === "history") {
       allPins = disasters.filter((d) => {
-        const type = majorDisasters.includes(d.disaster_type) ? d.disaster_type : "Other";
-
+        const typeGroup = getDisasterGroup(d.disaster_type);
         const matchType =
-          filter.disasterTypes.length > 0 ? filter.disasterTypes.includes(type) : false;
+          filter.disasterTypes.length > 0 ? filter.disasterTypes.includes(typeGroup) : false;
         const matchYear =
           !filter.year || new Date(d.start_date).getFullYear() === filter.year;
 
@@ -192,7 +227,7 @@ export default function MapAddCenter() {
     allPins.forEach((c) => {
       if (!markersRef.current.has(c.id)) {
         const el = document.createElement("div");
-        el.className = c.type === "eonet" ? "pin eonet-pin" : "pin";
+        el.className = "pin";
         el.title = c.name;
 
         el.addEventListener("click", () => {
@@ -228,6 +263,9 @@ export default function MapAddCenter() {
           .addTo(mapRef.current);
 
         markersRef.current.set(c.id, marker);
+        const group = getPinGroup(c);
+        el.style.backgroundColor = getPinColor(group);
+        el.style.border = "1px solid black";
       } else {
         markersRef.current.get(c.id)?.setLngLat([c.longitude, c.latitude]);
       }
@@ -290,6 +328,11 @@ export default function MapAddCenter() {
     });
 
   };
+  useEffect(() => {
+    if (activeDataset === "history") {
+      setShowCenter(false);
+    }
+  }, [activeDataset]);
   return (
     <>
       <div className="toolbar">
@@ -307,11 +350,19 @@ export default function MapAddCenter() {
         >
           History
         </button>
-        {activeDataset === "live" && (
-          <button className="btn" onClick={() => setShowCenter((s) => !s)}>
-            {showCenter ? "Close" : "Add Center"}
-          </button>
-        )}
+        <button
+          className="btn"
+          onClick={() => {
+            if (activeDataset === "history") return; // prevent click
+            setShowCenter((s) => !s);
+          }}
+          style={{
+            background: activeDataset === "live" ? "#0055ff" : "#555", // green for live, gray for history
+            cursor: activeDataset === "live" ? "pointer" : "not-allowed",
+          }}
+        >
+          {showCenter ? "Close" : "Add Center"}
+        </button>
       </div>
 
       {activeDataset === "history" && (
@@ -356,7 +407,7 @@ export default function MapAddCenter() {
 
 
           <div className="year-slider">
-            <label className="label">Year</label>
+            <label className="label">Year: {filter.year}</label>
             <div className="slider-wrapper">
               <Slider
                 min={2015}
@@ -392,43 +443,38 @@ export default function MapAddCenter() {
               {resourceRows.map((row, i) => (
                 <div className="res-row" key={i}>
                   <input
-                    className="input res-name"
-                    placeholder=""
+                    className="res-name"
+                    placeholder="Resource name"
                     value={row.name}
                     onChange={(e) => updateResourceName(i, e.target.value)}
                   />
                   <select
-                    className="input res-status"
+                    className="res-status"
                     value={row.status}
                     onChange={(e) => updateResourceStatus(i, e.target.value)}
                   >
                     {RESOURCE_STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
+                      <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
-                  <button
-                    type="button"
-                    className="btn small"
-                    onClick={() => removeResourceRow(i)}
-                    disabled={resourceRows.length === 1}
-                    title={
-                      resourceRows.length === 1
-                        ? "Keep at least one row"
-                        : "Remove"
-                    }
-                  >
-                    ✕
-                  </button>
                 </div>
               ))}
+
               <button
                 type="button"
-                className="btn small"
+                className="btn small add-resource"
                 onClick={addResourceRow}
               >
                 + Add resource
+              </button>
+
+              <button
+                type="button"
+                className="btn small delete-resource"
+                onClick={() => removeResourceRow(resourceRows.length - 1)}
+                disabled={resourceRows.length === 1}
+              >
+                - Delete last resource
               </button>
             </div>
 
@@ -442,96 +488,132 @@ export default function MapAddCenter() {
       <div ref={mapContainer} style={{ width: "100%", height: "100vh" }} />
 
       <style>{`
-      .toolbar { position: fixed; bottom: 12px; right: 5px; z-index: 10; display: flex; gap: 8px; }
+      .toolbar { position: fixed; bottom: 20px; right: 12px; z-index: 10; display: flex; gap: 8px; }
       .btn { background:rgb(0, 85, 255); color:white; padding: 8px 12px; border-radius: 10px; cursor: pointer; border:none; }
       .btn.primary { background: #22c55e; color: #0b1220; }
       .btn:hover { filter: brightness(1.05); }
 
       .panel {
-  position: fixed;
-  bottom: 56px;
-  right: 12px;
-  z-index: 10;
-  max-width: 100%;
-  box-sizing: border-box;
-  width: 300px;
-  background: #0b1220;
-  color: #e5e7eb;
-  border-radius: 12px;
-  padding: 12px;
-}
+        position: fixed;
+        bottom: 70px;
+        right: 12px;
+        z-index: 10;
+        max-width: 100%;
+        box-sizing: border-box;
+        width: 250px;
+        background: #0b1220;
+        color: #e5e7eb;
+        border-radius: 12px;
+        padding: 12px;
+      }
       
       .panel-title { font-weight: 700; margin-bottom: 8px; }
       .form { display: grid; gap: 10px; }
       .label { display: grid; gap: 6px; font-size: 12px; color: #cbd5e1; }
-      .input { background: #0f172a; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.1); padding: 8px 10px; border-radius: 8px; }
+      .input {
+        background: #0f172a;
+        color: #e5e7eb;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 8px 10px;
+        border-radius: 8px;
+        font-size: 14px;
+        width: 100%; /* full width */
+        box-sizing: border-box;
+      }
 
-      .pin { width: 14px; height: 14px; border-radius: 50%; background: rgb(0,68,255); box-shadow: 0 0 0 3px rgba(22,163,74,0.25); cursor:pointer; }
-      .pin:hover { transform: scale(1.12); box-shadow: 0 0 0 4px rgba(22,163,74,0.35); }
+      .pin { width: 10px; height: 10px; border-radius: 50%; cursor:pointer;}
+      .pin:hover { transform: scale(1.12); box-shadow: 0 0 0 3px rgba(22,163,74,0.35); }
 
-        .eonet-pin { background: #E53E3E; box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.3); }
-        .eonet-pin:hover { box-shadow: 0 0 0 4px rgba(229, 62, 62, 0.4); }
-        .checkbox-group {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
+      .checkbox-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
 
-        .checkbox-group .label {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 12px;
-          color: #cbd5e1;
-        }
+      .checkbox-group .label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #cbd5e1;
+      }
 
-        .btn.small {
-          align-self: flex-start;
-          background: #0b1220;
-          color: #e5e7eb;
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          padding: 2px 6px;
-          border-radius: 6px;
-          cursor: pointer;
-          font-size: 10px;
-          margin-bottom: 6px;
-        }
-        .btn.small:hover {
-          background: #1e293b;
-        }
-        .year-slider {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          margin-bottom: 8px;
-          width: 100%; /* full panel width */
-          align-items: center; /* center the wrapper */
-        }
+      .btn.small {
+        align-self: flex-start;
+        background: #0b1220;
+        color: #e5e7eb;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 2px 6px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 10px;
+        margin-bottom: 6px;
+      }
+      .btn.small:hover {
+        background: #1e293b;
+      }
+      .year-slider {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 8px;
+        width: 100%; /* full panel width */
+        align-items: center; /* center the wrapper */
+      }
 
-        .slider-wrapper {
-          width: 90%; /* fixed slider width */
-        }
-        .slider-labels {
-          display: flex;
-          justify-content: space-between;
-          font-size: 12px;
-          color: #cbd5e1;
-        }
-        .year-range-slider {
-          margin-top: 6px;
-        }
-        .rc-slider-mark-text{
-          color: #999;
-          margin-top: -3px;
-        } 
-        .res-row {
-          margin-bottom: 15px
-        }
+      .slider-wrapper {
+        width: 90%; /* fixed slider width */
+      }
+      .slider-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #cbd5e1;
+      }
+      .year-range-slider {
+        margin-top: 6px;
+      }
+      .rc-slider-mark-text{
+        color: #999;
+        margin-top: -3px;
+      } 
+      .res-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
 
-        .res-status {
-          margin: 10px
-          
-        }`
+      .res-row {
+        display: flex;
+        gap: 4px;
+        flex-direction: column;
+      }
+
+      .res-name,
+      .res-status {
+        width: 100%;
+        box-sizing: border-box;
+        background: #0f172a;
+        color: #e5e7eb;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 14px;
+        height: 36px; /* same height for name and status */
+      }
+      
+      .res-status {
+        padding: 4px 10px; /* small padding for select dropdown */
+        margin-bottom: 8px;
+      }
+
+      .btn.small.add-resource,
+      .btn.small.delete-resource {
+        width: 100%;
+        text-align: center;
+        margin-top: 2px; /* less gap above buttons */
+        margin-bottom: 2px; /* less gap below buttons */
+      }`
       }</style>
     </>
   );

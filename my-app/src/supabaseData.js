@@ -47,7 +47,7 @@ export async function fetchAllDisasters(batchSize = 1000) {
 export async function fetchEonetEvents() {
   const { data, error } = await supabase
     .from("eonet_events")
-    .select("eonet_id, title, geometry");
+    .select("eonet_id, title, geometry, category");
 
   if (error) throw error;
 
@@ -60,6 +60,7 @@ export async function fetchEonetEvents() {
       longitude: parseFloat(event.geometry[0]),
       latitude: parseFloat(event.geometry[1]),
       type: "eonet",
+      disaster_type: event.category
     };
   }).filter(Boolean);
 }
@@ -76,8 +77,6 @@ export async function fetchCenters() {
     // Format data (unpack location JSON into lng/lat)
     const formattedCenters = centers.map(center => {
       const [lng, lat] = center.location || [];
-      console.log(lng, lat);
-      console.log(center.resources);
       return {
         id: center.id,
         name: center.name,
