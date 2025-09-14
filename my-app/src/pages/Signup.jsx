@@ -8,6 +8,18 @@ const Signup = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [userData, setUserData] = useState();
+  const [state, setState] = useState("");
+
+  const states = [
+    "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut",
+    "Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa",
+    "Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan",
+    "Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire",
+    "New Jersey","New Mexico","New York","North Carolina","North Dakota","Ohio",
+    "Oklahoma","Oregon","Pennsylvania","Rhode Island","South Carolina","South Dakota",
+    "Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia",
+    "Wisconsin","Wyoming"
+  ];
 
   const navigate = useNavigate();
 
@@ -28,14 +40,17 @@ const Signup = () => {
           name,
           phone,
           city,
+          state
         },
       },
     });
     if (error) {
       alert("Error signing up!");
     } else {
-      navigate("/home");
+      alert("Check your email")
       setUserData(data);
+      navigate("/login")
+      //write sms logic
       console.log(data);
     }
   }
@@ -118,6 +133,22 @@ const Signup = () => {
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-400 focus:border-sky-400 outline-none shadow-sm"
           />
         </div>
+            <div>
+      <label className="block text-sm font-medium text-gray-600 mb-1">
+        State
+      </label>
+      <select
+        value={state}
+        onChange={(e) => setState(e.target.value)}
+        required
+        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-400 focus:border-sky-400 outline-none shadow-sm"
+      >
+        <option value="" disabled>Select your state</option>
+        {states.map((s) => (
+          <option key={s} value={s}>{s}</option>
+        ))}
+      </select>
+    </div>
         <div>
           <label className="block text-sm font-medium text-gray-600 mb-1">
             Password
