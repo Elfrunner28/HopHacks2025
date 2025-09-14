@@ -17,6 +17,7 @@ const Login = () => {
       console.log("Error logging in.");
     } else {
       console.log({ data });
+      localStorage.setItem("user", JSON.stringify(data));
       const response = await fetch("http://localhost:5000/check-state", {
         method: "POST",
         headers: {
@@ -68,6 +69,12 @@ const Login = () => {
           onClick={logIn}
         >
           Login
+        </button>
+         <button
+          className="w-full bg-indigo-500 text-black py-2 rounded-lg font-semibold hover:bg-indigo-600 transition"
+          onClick={()=> navigate("/signup")}
+        >
+          Back to sign up
         </button>
       </div>
     </div>

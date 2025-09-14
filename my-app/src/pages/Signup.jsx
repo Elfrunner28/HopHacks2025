@@ -48,22 +48,16 @@ const Signup = () => {
       alert("Error signing up!");
     } else {
       alert("Check your email")
-      setUserData(data);
       navigate("/login")
-      //write sms logic
-      console.log(data);
     }
   }
   async function logout() {
     const { data, error } = await supabase.auth.signOut();
     setUserData(null);
+    localStorage.setItem("user", null);
+    navigate("/")
   }
-  return userData?.session != null ? (
-    <div>
-      <h1>Hello, {userData.session.user.email}</h1>
-      <button onClick={logout}>Logout</button>
-    </div>
-  ) : (
+  return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-r from-teal-400 to-emerald-400">
       <div className="bg-white p-10 rounded-2xl shadow-lg text-center space-y-6 w-full max-w-md mx-4">
         <h2 className="text-3xl font-bold text-gray-800 text-center">
@@ -172,6 +166,7 @@ const Signup = () => {
         >
           Sign Up
         </button>
+        <button onClick={()=> navigate("/login")}>Already have an account</button>
       </div>
     </div>
   );
