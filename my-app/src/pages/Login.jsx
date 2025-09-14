@@ -8,9 +8,7 @@ const Login = () => {
   const [userData, setUserData] = useState();
   const navigate = useNavigate();
 
-
   async function logIn() {
-
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email,
       password: password,
@@ -19,17 +17,15 @@ const Login = () => {
     if (error) {
       console.log("Error logging in.");
     } else {
-      navigate("/home")
+      navigate("/home");
       setUserData(data);
       console.log(data);
     }
   }
 
-
   return (
-   <div className="flex items-center justify-center min-h-screen bg-gradient-to-r from-teal-400 to-emerald-400">
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-r from-teal-400 to-emerald-400">
       <div className="bg-white p-10 rounded-2xl shadow-lg text-center space-y-6 w-full max-w-md mx-4">
-
         <h2 className="text-2xl font-bold text-gray-700 mb-6 text-center">
           Login
         </h2>
@@ -38,17 +34,16 @@ const Login = () => {
           type="text"
           name="email"
           placeholder="Email"
-          onChange={(e)=>setEmail(e.target.value)}
+          onChange={(e) => setEmail(e.target.value)}
           required
           className="w-full px-4 py-2 mb-4 border rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
         />
 
-        
         <input
           type="password"
           name="password"
           placeholder="Password"
-          onChange={(e)=>setPassword(e.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
           required
           className="w-full px-4 py-2 mb-4 border rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none"
         />
@@ -60,8 +55,8 @@ const Login = () => {
         >
           Login
         </button>
+      </div>
     </div>
-     </div>
   );
 };
 
