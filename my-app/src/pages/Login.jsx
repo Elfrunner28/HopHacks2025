@@ -38,6 +38,7 @@ const Login = () => {
       }
 
       navigate("/home");
+        localStorage.setItem("user", JSON.stringify({data}));
       // setUserData(data); // This doesn't do much since you navigate away immediately
       console.log(data);
     }
