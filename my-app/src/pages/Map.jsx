@@ -3,7 +3,8 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import Slider from "rc-slider";
 import "rc-slider/assets/index.css";
-import { fetchAllDisasters, fetchEonetEvents } from "../supabaseData";
+import { fetchAllDisasters, fetchEonetEvents, fetchCenters } from "../supabaseData";
+import { supabase } from "../supabaseClient";
 
 mapboxgl.accessToken =
   "pk.eyJ1IjoiYm9ta2EtMjciLCJhIjoiY21maHd3a3htMDE1ZjJrcHU3cXNrYjF3YSJ9.vGnAnTPwaGpTDso10ytKgg";
@@ -26,7 +27,12 @@ export default function MapAddCenter() {
   const [resourceRows, setResourceRows] = useState([
     { name: "", status: "available" },
   ]);
-
+  const escapeHtml = (text) => {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+  };
+  
   const RESOURCE_STATUSES = ["available", "low", "out"];
 
   function statusClass(s) {
@@ -66,6 +72,15 @@ export default function MapAddCenter() {
   const uniqueTypes = Array.from(
     new Set(allDisasterTypes.map((type) => (majorDisasters.includes(type) ? type : "Other")))
   );
+
+  // Load centers from Supabase
+  useEffect(() => {
+    async function loadCenters() {
+      const data = await fetchCenters();
+      setCenters(data);
+    }
+    loadCenters();
+  }, []);
 
   // Initialize map
   useEffect(() => {
@@ -221,39 +236,59 @@ export default function MapAddCenter() {
 
   const submitCenter = async (e) => {
     e.preventDefault();
-    if (!centerName) return alert("name not provided");
-    if (!navigator.geolocation) return;
+    if (!centerName) return alert("Name not provided");
+    if (!navigator.geolocation) return alert("Geolocation not supported");
 
-    navigator.geolocation.getCurrentPosition(({ coords }) => {
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+      // Convert resourceRows to a JSON object
       const resources = resourceRows
-        .map((r) => ({ name: r.name.trim(), status: r.status }))
-        .filter((r) => r.name.length > 0); // drop empty rows
+        .filter((r) => r.name.trim().length > 0)
+        .reduce((acc, r) => {
+          acc[r.name.trim()] = r.status;
+          return acc;
+        }, {});
 
-      const newCenter = {
-        id: String(Date.now()),
-        name: centerName.trim(),
-        resources,
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-      };
+      try {
+        // Insert into Supabase
+        const { data, error } = await supabase
+          .from("centers")
+          .insert([{ name: centerName.trim(), location: [coords.longitude, coords.latitude], resources }])
+          .select()
+          .single();
 
-      setCenters((prev) => [...prev, newCenter]);
-      setShowCenter(false);
-      setCenterName("");
-      setResourceRows([{ name: "", status: "available" }]); // reset editor
+        if (error) {
+          console.error("Failed to insert center:", error);
+          return alert("Failed to save center to database");
+        }
 
-      mapRef.current?.flyTo({
-        center: [newCenter.longitude, newCenter.latitude],
-        zoom: 14,
-        essential: true,
-      });
+        const newCenter = {
+          id: data.id,
+          name: data.name || centerName.trim(),
+          resources: data.resources || resources,
+          longitude: data.location[0],
+          latitude: data.location[1],
+        };
+        console.log(newCenter);
+
+        // Update local state with inserted center
+        setCenters((prev) => [...prev, newCenter]);
+
+        // Reset form
+        setShowCenter(false);
+        setCenterName("");
+        setResourceRows([{ name: "", status: "available" }]);
+
+        // Fly map to new center
+        mapRef.current?.flyTo({
+          center: [data.location[0], data.location[1]],
+          zoom: 14,
+          essential: true,
+        });
+      } catch (err) {
+        console.error("Unexpected error inserting center:", err);
+      }
     });
 
-    const escapeHtml = (text) => {
-      const div = document.createElement("div");
-      div.textContent = text;
-      return div.innerHTML;
-    };
   };
   return (
     <>
@@ -272,9 +307,11 @@ export default function MapAddCenter() {
         >
           History
         </button>
-        <button className="btn" onClick={() => setShowCenter((s) => !s)}>
-          {showCenter ? "Close" : "Add Center"}
-        </button>
+        {activeDataset === "live" && (
+          <button className="btn" onClick={() => setShowCenter((s) => !s)}>
+            {showCenter ? "Close" : "Add Center"}
+          </button>
+        )}
       </div>
 
       {activeDataset === "history" && (
