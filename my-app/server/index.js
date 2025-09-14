@@ -1,3 +1,4 @@
+const path = require("path");
 const express = require("express");
 const { sendEmail } = require("./smsAlert");
 const { createClient } = require("@supabase/supabase-js");
@@ -103,7 +104,14 @@ app.post("/gpt", async (req, res) => {
 });
 
 // Start server
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+});
+
+// Serve React frontend (Vite build)
+app.use(express.static(path.join(__dirname, "../dist")))
+
+app.get(/^\/(?!api).*/, (req, res) => {
+  res.sendFile(path.join(__dirname, "../dist/index.html"));
 });

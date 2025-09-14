@@ -26,7 +26,14 @@ export default function MapAddCenter() {
   const [activeDataset, setActiveDataset] = useState("live");
   const [filter, setFilter] = useState({ disasterTypes: [], year: 2025 });
 
-  const [showCenter, setShowCenter] = useState(false);
+  // --- STATE MODIFICATION ---
+  // Replaced showCenter boolean with an object to manage panel state
+  const [activeFormCenter, setActiveFormCenter] = useState(null);
+  // This state will be:
+  // null = panel is hidden
+  // { isNew: true } = panel is open in "Add New" mode
+  // { ...centerObject } = panel is open in "Edit" mode
+
   const [centerName, setCenterName] = useState("");
   const [resourceRows, setResourceRows] = useState([
     { name: "", status: "available" },
@@ -232,7 +239,9 @@ export default function MapAddCenter() {
   useEffect(() => {
     async function loadCenters() {
       const data = await fetchCenters();
-      setCenters(data);
+      // Manually add type: "center" to all fetched data for consistency
+      const typedData = data.map((c) => ({ ...c, type: "center" }));
+      setCenters(typedData);
     }
     loadCenters();
   }, []);
@@ -487,11 +496,88 @@ export default function MapAddCenter() {
       }
     });
   };
+
+  const handleDeleteCenter = async (centerId) => {
+    // 1. Confirm with the user
+    if (!window.confirm("Are you sure you want to delete this center?")) {
+      return false; // User canceled
+    }
+
+    // 2. Send delete request to Supabase
+    try {
+      const { error } = await supabase
+        .from("centers")
+        .delete()
+        .eq("id", centerId); // Use .eq for precise matching on the primary key
+
+      if (error) {
+        throw error; // Throw error to be caught below
+      }
+
+      return true; // Signal success
+    } catch (error) {
+      console.error("Error deleting center:", error.message);
+      alert("Failed to delete the center.");
+      return false; // Signal failure
+    }
+  };
+
+  // --- NEW UPDATE FUNCTION ---
+  const handleUpdateCenter = async (e) => {
+    e.preventDefault();
+    if (!centerName) return alert("Center name not provided");
+    if (!activeFormCenter || activeFormCenter.isNew) return; // Safety check
+
+    // Convert resourceRows back into a JSON object
+    const resources = resourceRows
+      .filter((r) => r.name.trim().length > 0)
+      .reduce((acc, r) => {
+        acc[r.name.trim()] = r.status;
+        return acc;
+      }, {});
+
+    const needsArray = needs.map((n) => n.trim()).filter(Boolean);
+
+    // Run the Supabase UPDATE query
+    try {
+      const { error } = await supabase
+        .from("centers")
+        .update({
+          name: centerName.trim(),
+          resources: resources,
+          needs: needsArray,
+        })
+        .eq("id", activeFormCenter.id); // Match the ID of the center we are editing
+
+      if (error) {
+        throw error;
+      }
+
+      // Close the panel on success. The realtime subscription will update the UI.
+      setActiveFormCenter(null);
+    } catch (error) {
+      console.error("Failed to update center:", error);
+      alert("Failed to update center.");
+    }
+  };
+
   useEffect(() => {
     if (activeDataset === "history") {
-      setShowCenter(false);
+      // If user switches to history, close any open form panel
+      setActiveFormCenter(null);
     }
   }, [activeDataset]);
+
+  // --- NEW HANDLER TO OPEN "ADD" PANEL ---
+  const openAddCenterPanel = () => {
+    // Reset form state to defaults for a new entry
+    setCenterName("");
+    setResourceRows([{ name: "", status: "available" }]);
+    setNeeds([""]);
+    // Open the panel in "new" mode
+    setActiveFormCenter({ isNew: true });
+  };
+
   return (
     <>
       <div className="toolbar">
@@ -513,23 +599,31 @@ export default function MapAddCenter() {
         >
           History
         </button>
+        {/* --- UPDATED "ADD/CLOSE" BUTTON --- */}
         <button
           className="btn"
           onClick={() => {
             if (activeDataset === "history") return; // prevent click
-            setShowCenter((s) => !s);
+
+            // New logic: If panel is open (for add OR edit), close it.
+            // If panel is closed, open it in "Add" mode.
+            if (activeFormCenter) {
+              setActiveFormCenter(null);
+            } else {
+              openAddCenterPanel();
+            }
           }}
           style={{
             background: activeDataset === "live" ? "#0055ff" : "#555", // green for live, gray for history
             cursor: activeDataset === "live" ? "pointer" : "not-allowed",
           }}
         >
-          {showCenter ? "Close" : "Add Center"}
+          {activeFormCenter ? "Close" : "Add Center"}
         </button>
       </div>
 
       {activeDataset === "history" && (
-        <div className="panel">
+        <div className="panel history">
           <div className="panel-title">Filter Disasters</div>
           <div className="checkbox-group">
             <button
@@ -793,6 +887,17 @@ export default function MapAddCenter() {
         z-index: 9;
       }
 
+            .modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(4px);
+        z-index: 9;
+      }
+
       .panel {
         position: fixed;
         top: 50%;
@@ -807,6 +912,11 @@ export default function MapAddCenter() {
         border: 1px solid #000;
         border-radius: 12px;
         padding: 12px;
+      }
+      .panel.history{
+        top: 69%;
+        left: 88%;
+        width: 300px;
       }
       
       .panel-title { font-weight: 700; margin-bottom: 15px; font-size: 30px }
@@ -931,6 +1041,46 @@ export default function MapAddCenter() {
         text-align: center;
         margin-top: 4px;
         font-size: 14px;
+      }
+      .needs-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 4px;
+      }
+
+      .needs-row {
+        display: grid;
+        grid-template-columns: 1fr auto; /* input + small button */
+        gap: 6px;
+        align-items: center;
+      }
+
+      .needs-input {
+        background: #0f172a;
+        color: #e5e7eb;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 14px;
+        height: 36px;
+        box-sizing: border-box;
+        width: 100%;
+      }
+
+      .needs-row-actions .btn.small {
+        height: 28px;
+        padding: 2px 8px;
+      }
+        .resource-row-actions .btn.small {
+        height: 28px;
+        padding: 2px 8px;
+      }
+
+      .btn.small.add-need {
+        width: 100%;
+        text-align: center;
+        margin-top: 4px;
       }
 
       .res-row {
