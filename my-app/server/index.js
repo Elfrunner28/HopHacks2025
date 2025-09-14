@@ -110,8 +110,8 @@ app.listen(PORT, () => {
 });
 
 // Serve React frontend (Vite build)
-app.use(express.static(path.join(__dirname, "../dist")));
+app.use(express.static(path.join(__dirname, "../dist")))
 
-app.get("/*", (req, res) => {
+app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, "../dist/index.html"));
 });
